@@ -36,3 +36,6 @@ iOSInjectionProject/
 # Node
 **/node_modules/
 
+# Secrets (contains API keys)
+Mighty/Secrets.swift
+

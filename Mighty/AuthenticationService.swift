@@ -10,7 +10,7 @@ actor AuthenticationService {
     // InstantDB base URL for token verification (no admin token needed)
     private let instantDBBaseURL = "https://api.instantdb.com"
 
-    private let appId = "21104cf5-7e8a-4f5a-a0f2-af76939978e9"
+    private let appId = Secrets.instantDBAppId
 
     private init() {}
 
