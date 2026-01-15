@@ -294,6 +294,10 @@ struct AddEntrySheet: View {
             user: user
         )
         modelContext.insert(entry)
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 }

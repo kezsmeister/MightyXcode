@@ -401,10 +401,26 @@ struct EntryDetailSheet: View {
         entry.videoType = selectedType == .movies ? selectedVideoType : nil
         entry.date = startDate
         entry.endDate = isDateRange ? endDate : nil
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
     }
 
     private func deleteEntry() {
+        // Capture ID before deleting
+        let entryId = entry.id
+
+        // Mark as deleted to prevent sync from restoring it
+        DeletionTracker.shared.markMediaEntryDeleted(entryId)
+
+        // Delete locally
         modelContext.delete(entry)
+
+        // Delete from cloud in background
+        Task {
+            try? await EntrySyncService.shared.deleteMediaEntryFromCloud(entryId: entryId)
+        }
+
         dismiss()
     }
 }

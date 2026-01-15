@@ -104,8 +104,9 @@ struct CalendarView: View {
             if let entry = customEntries.first(where: { $0.containsDate(date) && $0.section?.id == sectionId }) {
                 let activityIcon = ActivityIconService.icon(for: entry.title)
                 let activityColors = ActivityIconService.colors(for: entry.title)
-                // Check if this entry has a conflict with another entry
-                let conflictingIds = ConflictDetectionService.shared.entriesWithConflicts(on: date, allEntries: customEntries)
+                // Check if this entry has a conflict with another entry in the SAME section
+                let sectionEntries = customEntries.filter { $0.section?.id == sectionId }
+                let conflictingIds = ConflictDetectionService.shared.entriesWithConflicts(on: date, allEntries: sectionEntries)
                 let hasConflict = conflictingIds.contains(entry.id)
                 return DayCellData(
                     title: entry.title,

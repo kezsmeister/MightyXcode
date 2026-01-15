@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import os.log
+
+private let syncLogger = Logger(subsystem: "com.mighty.app", category: "Sync")
 
 @main
 struct MightyApp: App {
@@ -20,7 +23,7 @@ struct MightyApp: App {
         let modelConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .automatic
+            cloudKitDatabase: .none  // Using InstantDB for cloud sync instead
         )
 
         do {
@@ -74,8 +77,64 @@ struct RootView: View {
                         // Regenerate recurring entries
                         regenerateRecurringEntries()
                     }
+                    .task {
+                        // Auto-sync entries when app launches
+                        await performAutoSync()
+                    }
             } else {
                 OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+            }
+        }
+    }
+
+    private func performAutoSync() async {
+        // Wait a moment for SwiftData to load
+        try? await Task.sleep(for: .milliseconds(500))
+
+        // Use SyncManager for coordinated sync
+        await SyncManager.shared.performFullSync(context: modelContext)
+
+        // Clean up duplicate entries from cloud database
+        do {
+            let removedCount = try await EntrySyncService.shared.cleanupCloudDuplicates()
+            if removedCount > 0 {
+                syncLogger.notice("Cleaned up \(removedCount) duplicate entries from cloud")
+            }
+        } catch {
+            syncLogger.error("Failed to cleanup cloud duplicates: \(error.localizedDescription)")
+        }
+
+        // Clean up any local duplicates
+        cleanupLocalDuplicateEntries()
+    }
+
+    private func cleanupLocalDuplicateEntries() {
+        let fetchDescriptor = FetchDescriptor<CustomEntry>()
+        guard let allEntries = try? modelContext.fetch(fetchDescriptor) else { return }
+
+        let calendar = Calendar.current
+        var seenKeys = Set<String>()
+        var entriesToDelete: [CustomEntry] = []
+
+        let sortedEntries = allEntries.sorted { $0.updatedAt > $1.updatedAt }
+
+        for entry in sortedEntries {
+            let hour = entry.startTime.map { calendar.component(.hour, from: $0) } ?? -1
+            let minute = entry.startTime.map { calendar.component(.minute, from: $0) } ?? -1
+            let day = calendar.startOfDay(for: entry.date).timeIntervalSince1970
+            let key = "\(entry.title)-\(day)-\(hour)-\(minute)"
+
+            if seenKeys.contains(key) {
+                entriesToDelete.append(entry)
+            } else {
+                seenKeys.insert(key)
+            }
+        }
+
+        if !entriesToDelete.isEmpty {
+            syncLogger.notice("Removing \(entriesToDelete.count) local duplicate entries")
+            for entry in entriesToDelete {
+                modelContext.delete(entry)
             }
         }
     }

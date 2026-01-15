@@ -92,7 +92,20 @@ struct UserManagerSheet: View {
         if selectedUser?.id == user.id {
             selectedUser = users.first { $0.id != user.id }
         }
+
+        // Capture ID before deleting
+        let userId = user.id
+
+        // Mark as deleted to prevent sync from restoring it
+        DeletionTracker.shared.markProfileDeleted(userId)
+
+        // Delete locally
         modelContext.delete(user)
+
+        // Delete from cloud in background
+        Task {
+            try? await ProfileSyncService.shared.deleteProfileFromCloud(userId: userId)
+        }
     }
 }
 
@@ -226,13 +239,30 @@ struct AddUserSheet: View {
             ownerId: AuthState.shared.instantDBUserId
         )
         user.hasCompletedOnboarding = true  // Skip onboarding for manually added users
+
+        // Create default "Kids Activities" section
+        let defaultSection = CustomSection(
+            name: "Kids Activities",
+            icon: "figure.play",
+            suggestedActivities: ["Soccer", "Piano", "Swimming", "Dance", "Art Class", "Gymnastics"],
+            user: user
+        )
+        user.customSections.append(defaultSection)
+        user.tabOrder.append(defaultSection.id.uuidString)
+
         modelContext.insert(user)
+        modelContext.insert(defaultSection)
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 }
 
 struct EditUserSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let user: User
 
@@ -305,6 +335,10 @@ struct EditUserSheet: View {
     private func saveChanges() {
         user.name = name.trimmingCharacters(in: .whitespaces)
         user.emoji = selectedEmoji
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 }

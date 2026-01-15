@@ -95,6 +95,7 @@ final class CustomSection {
     var name: String = ""
     var icon: String = "star.fill"
     var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     var sortOrder: Int = 0
     var suggestedActivities: [String] = []
     var notificationsEnabled: Bool = false
@@ -106,6 +107,7 @@ final class CustomSection {
         self.name = name
         self.icon = icon
         self.createdAt = createdAt
+        self.updatedAt = createdAt
         self.sortOrder = sortOrder
         self.suggestedActivities = suggestedActivities
         self.notificationsEnabled = notificationsEnabled
@@ -128,6 +130,7 @@ final class CustomEntry {
     var imagesData: [Data] = []
     var section: CustomSection?
     var user: User?
+    var updatedAt: Date = Date()
 
     // Recurrence fields
     var recurrenceGroupId: UUID?
@@ -194,6 +197,7 @@ final class CustomEntry {
         self.recurrenceEndDate = recurrenceEndDate
         self.recurrenceOccurrenceCount = recurrenceOccurrenceCount
         self.isRecurrenceTemplate = isRecurrenceTemplate
+        self.updatedAt = Date()
     }
 
     func containsDate(_ checkDate: Date) -> Bool {
@@ -253,6 +257,7 @@ final class MediaEntry {
     var rating: Int?
     var notes: String?
     var user: User?
+    var updatedAt: Date = Date()
 
     var mediaType: MediaType {
         get { MediaType(rawValue: mediaTypeRaw) ?? .movies }
@@ -286,6 +291,7 @@ final class MediaEntry {
         self.rating = rating
         self.notes = notes
         self.user = user
+        self.updatedAt = Date()
     }
 
     func containsDate(_ checkDate: Date) -> Bool {

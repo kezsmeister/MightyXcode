@@ -326,6 +326,9 @@ struct AddCustomEntrySheet: View {
             }
         }
 
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 }

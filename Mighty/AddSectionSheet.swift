@@ -351,6 +351,10 @@ struct AddSectionSheet: View {
     private func enableTemplate(_ template: DetectedTemplate) {
         user.enabledTemplates.append(template.templateId)
         user.tabOrder.append(template.templateId)
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 
@@ -379,6 +383,10 @@ struct AddSectionSheet: View {
         user.customSections.append(section)
         user.tabOrder.append(section.id.uuidString)
         modelContext.insert(section)
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
+
         dismiss()
     }
 }

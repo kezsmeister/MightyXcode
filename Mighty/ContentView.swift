@@ -450,7 +450,20 @@ struct ContentView: View {
         if let user = selectedUser {
             user.tabOrder.removeAll { $0 == section.id.uuidString }
         }
+
+        // Capture ID before deleting
+        let sectionId = section.id
+
+        // Mark as deleted to prevent sync from restoring it
+        DeletionTracker.shared.markSectionDeleted(sectionId)
+
+        // Delete locally
         modelContext.delete(section)
+
+        // Delete from cloud in background
+        Task {
+            try? await EntrySyncService.shared.deleteSectionFromCloud(sectionId: sectionId)
+        }
     }
 
     private var calendarSection: some View {

@@ -420,6 +420,9 @@ struct OnboardingView: View {
         modelContext.insert(user)
         modelContext.insert(section)
 
+        // Trigger background sync if authenticated
+        SyncManager.shared.triggerSync(context: modelContext)
+
         hasCompletedOnboarding = true
     }
 }

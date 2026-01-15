@@ -1,0 +1,17 @@
+name = "mighty-db-proxy"
+main = "instantdb-proxy.js"
+compatibility_date = "2024-01-01"
+
+# You can deploy to a custom domain or use workers.dev subdomain
+# workers_dev = true
+
+# Environment variables (non-secret)
+[vars]
+INSTANTDB_APP_ID = "21104cf5-7e8a-4f5a-a0f2-af76939978e9"
+
+# Secret environment variables - set these using:
+# wrangler secret put INSTANTDB_ADMIN_TOKEN
+#
+# DO NOT put the actual admin token in this file!
+# The admin token should be set as a secret via the Cloudflare dashboard
+# or using the wrangler CLI command above.

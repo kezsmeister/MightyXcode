@@ -3,6 +3,7 @@ import SwiftData
 
 struct SectionSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let section: CustomSection
 
@@ -70,6 +71,8 @@ struct SectionSettingsSheet: View {
                 if granted {
                     section.notificationsEnabled = true
                     NotificationManager.shared.scheduleAllNotifications(for: section)
+                    // Trigger background sync
+                    SyncManager.shared.triggerSync(context: modelContext)
                 } else {
                     notificationsEnabled = false
                     showingPermissionDeniedAlert = true
@@ -78,6 +81,8 @@ struct SectionSettingsSheet: View {
         } else {
             section.notificationsEnabled = false
             NotificationManager.shared.cancelAllNotifications(for: section)
+            // Trigger background sync
+            SyncManager.shared.triggerSync(context: modelContext)
         }
     }
 }

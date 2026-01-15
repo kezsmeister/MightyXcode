@@ -11,9 +11,8 @@ struct SettingsView: View {
     @State private var showingDeleteAlert = false
     @State private var showingTemplateManager = false
     @State private var showingLoginSheet = false
-    @State private var isSyncing = false
-    @State private var syncMessage: String?
     @State private var authState = AuthState.shared
+    @State private var syncManager = SyncManager.shared
     @State private var isSigningOut = false
     @State private var signOutError: String?
 
@@ -31,26 +30,36 @@ struct SettingsView: View {
                                 .lineLimit(1)
                         }
 
+                        // Sync Status
+                        HStack {
+                            Label("Cloud Sync", systemImage: "icloud")
+                            Spacer()
+                            syncStatusView
+                        }
+
+                        if let lastSync = syncManager.lastSyncDescription {
+                            Text("Last synced \(lastSync)")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+
+                        // Manual sync button (fallback)
                         Button {
-                            syncProfiles()
+                            Task {
+                                await syncManager.performFullSync(context: modelContext)
+                            }
                         } label: {
                             HStack {
-                                Label("Sync Profiles", systemImage: "arrow.triangle.2.circlepath")
+                                Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
                                 Spacer()
-                                if isSyncing {
+                                if syncManager.isSyncing {
                                     ProgressView()
                                         .tint(.purple)
                                 }
                             }
                         }
                         .foregroundColor(.white)
-                        .disabled(isSyncing)
-
-                        if let message = syncMessage {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundColor(message.contains("Error") ? .red : .green)
-                        }
+                        .disabled(syncManager.isSyncing)
 
                         Button(role: .destructive) {
                             signOut()
@@ -180,31 +189,36 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
     }
 
-    private func syncProfiles() {
-        guard user != nil else { return }
-
-        isSyncing = true
-        syncMessage = nil
-
-        Task {
-            do {
-                try await ProfileSyncService.shared.performFullSync(context: modelContext)
-                await MainActor.run {
-                    isSyncing = false
-                    syncMessage = "Synced successfully"
-                    // Clear message after 3 seconds
-                    Task {
-                        try? await Task.sleep(for: .seconds(3))
-                        await MainActor.run {
-                            syncMessage = nil
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    isSyncing = false
-                    syncMessage = "Error: \(error.localizedDescription)"
-                }
+    @ViewBuilder
+    private var syncStatusView: some View {
+        switch syncManager.syncStatus {
+        case .idle:
+            Image(systemName: "checkmark.icloud")
+                .foregroundColor(.green)
+        case .syncing(let message):
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        case .success:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                Text("Synced")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+        case .error(let message):
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.icloud")
+                    .foregroundColor(.red)
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .lineLimit(1)
             }
         }
     }

@@ -16,7 +16,7 @@ actor ProfileSyncService {
             throw ProfileSyncError.notAuthenticated
         }
 
-        var operations: [[String: Any]] = []
+        var steps: [[Any]] = []
 
         for user in users {
             let profileId = user.id.uuidString
@@ -33,26 +33,25 @@ actor ProfileSyncService {
             ]
 
             // Update profile data
-            let updateOp = InstantDBService.shared.updateOperation(
+            let updateStep = InstantDBService.shared.updateStep(
                 namespace: "kidProfiles",
                 id: profileId,
                 data: profileData
             )
-            operations.append(updateOp)
+            steps.append(updateStep)
 
-            // Link to parent user
-            let linkOp = InstantDBService.shared.linkOperation(
+            // Link to parent user ($users is the built-in users namespace)
+            let linkStep = InstantDBService.shared.linkStep(
                 namespace: "kidProfiles",
                 id: profileId,
                 linkField: "parent",
-                linkedNamespace: "$users",
                 linkedId: parentUserId
             )
-            operations.append(linkOp)
+            steps.append(linkStep)
         }
 
-        if !operations.isEmpty {
-            try await InstantDBService.shared.transact(operations)
+        if !steps.isEmpty {
+            try await InstantDBService.shared.transact(steps)
         }
     }
 
@@ -88,6 +87,12 @@ actor ProfileSyncService {
         let localUsers = try context.fetch(descriptor)
 
         for cloudProfile in cloudProfiles {
+            // Skip profiles that were recently deleted locally
+            if let profileUUID = UUID(uuidString: cloudProfile.localId),
+               DeletionTracker.shared.isProfileDeleted(profileUUID) {
+                continue
+            }
+
             // Check if profile already exists locally by localId
             if let existingUser = localUsers.first(where: { $0.id.uuidString == cloudProfile.localId }) {
                 // Update existing user if cloud is newer than local updatedAt
@@ -152,11 +157,11 @@ actor ProfileSyncService {
 
     /// Delete a kid profile from InstantDB
     func deleteProfileFromCloud(userId: UUID) async throws {
-        let deleteOp = InstantDBService.shared.deleteOperation(
+        let deleteStep = InstantDBService.shared.deleteStep(
             namespace: "kidProfiles",
             id: userId.uuidString
         )
-        try await InstantDBService.shared.transact([deleteOp])
+        try await InstantDBService.shared.transact([deleteStep])
     }
 }
 
@@ -164,6 +169,15 @@ actor ProfileSyncService {
 
 struct KidProfilesResponse: Decodable {
     let kidProfiles: [CloudKidProfile]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.kidProfiles = (try? container.decode([CloudKidProfile].self, forKey: .kidProfiles)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case kidProfiles
+    }
 }
 
 struct CloudKidProfile: Decodable {

@@ -22,6 +22,7 @@ struct CustomEntryDetailSheet: View {
     @State private var isEditing = false
     @State private var showingPermissionDenied = false
     @State private var showDeleteConfirmation = false
+    @State private var showRecurringDeleteConfirmation = false
     @State private var showingSuggestions = false
     @State private var showingPhotoOptions = false
     @State private var showingCamera = false
@@ -285,7 +286,12 @@ struct CustomEntryDetailSheet: View {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: 16) {
                         Button {
-                            showDeleteConfirmation = true
+                            // Show different dialog for recurring entries
+                            if entry.recurrenceGroupId != nil {
+                                showRecurringDeleteConfirmation = true
+                            } else {
+                                showDeleteConfirmation = true
+                            }
                         } label: {
                             Image(systemName: "trash")
                                 .foregroundColor(.red)
@@ -310,6 +316,17 @@ struct CustomEntryDetailSheet: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to delete \"\(entry.title)\"? This action cannot be undone.")
+            }
+            .confirmationDialog("Delete Recurring Activity", isPresented: $showRecurringDeleteConfirmation, titleVisibility: .visible) {
+                Button("Delete This Only", role: .destructive) {
+                    deleteEntry()
+                }
+                Button("Delete All Recurring", role: .destructive) {
+                    deleteAllRecurring()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This is a recurring activity. Would you like to delete just this one or all occurrences?")
             }
         }
         .presentationDetents([.medium, .large])
@@ -441,17 +458,91 @@ struct CustomEntryDetailSheet: View {
         } else {
             NotificationManager.shared.cancelNotification(for: entry)
         }
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
     }
 
     private func deleteEntry() {
         // Cancel notification before deleting
         NotificationManager.shared.cancelNotification(for: entry)
+
+        // Capture ID before deleting
+        let entryId = entry.id
+
+        // Mark as deleted to prevent sync from restoring it
+        DeletionTracker.shared.markCustomEntryDeleted(entryId)
+
+        // Delete locally
         modelContext.delete(entry)
+
+        // Delete from cloud in background
+        Task {
+            try? await EntrySyncService.shared.deleteCustomEntryFromCloud(entryId: entryId)
+        }
+
+        dismiss()
+    }
+
+    private func deleteAllRecurring() {
+        guard let groupId = entry.recurrenceGroupId else {
+            // Fallback to single delete if no group
+            deleteEntry()
+            return
+        }
+
+        // Get the day of week and time of the entry being deleted
+        let calendar = Calendar.current
+        let entryWeekday = calendar.component(.weekday, from: entry.date)
+        let entryStartTime = entry.startTime
+
+        // Find all entries in the same recurrence group that match the same day of week and time
+        let recurringEntries = allCustomEntries.filter { otherEntry in
+            guard otherEntry.recurrenceGroupId == groupId else { return false }
+
+            // Must be same day of week
+            let otherWeekday = calendar.component(.weekday, from: otherEntry.date)
+            guard otherWeekday == entryWeekday else { return false }
+
+            // Must be same start time (if both have times)
+            if let entryTime = entryStartTime, let otherTime = otherEntry.startTime {
+                let entryHour = calendar.component(.hour, from: entryTime)
+                let entryMinute = calendar.component(.minute, from: entryTime)
+                let otherHour = calendar.component(.hour, from: otherTime)
+                let otherMinute = calendar.component(.minute, from: otherTime)
+                return entryHour == otherHour && entryMinute == otherMinute
+            }
+
+            // If neither has a time, they match
+            return entryStartTime == nil && otherEntry.startTime == nil
+        }
+
+        // Delete all matching entries
+        for recurringEntry in recurringEntries {
+            // Cancel notification
+            NotificationManager.shared.cancelNotification(for: recurringEntry)
+
+            // Mark as deleted to prevent sync from restoring it
+            DeletionTracker.shared.markCustomEntryDeleted(recurringEntry.id)
+
+            // Delete from cloud in background
+            let entryId = recurringEntry.id
+            Task {
+                try? await EntrySyncService.shared.deleteCustomEntryFromCloud(entryId: entryId)
+            }
+
+            // Delete locally
+            modelContext.delete(recurringEntry)
+        }
+
         dismiss()
     }
 
     private func savePhotoChange() {
         entry.imagesData = displayedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+
+        // Trigger background sync
+        SyncManager.shared.triggerSync(context: modelContext)
     }
 }
 
