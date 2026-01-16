@@ -76,10 +76,6 @@ struct RootView: View {
                         migrateExistingUsers()
                         // Regenerate recurring entries
                         regenerateRecurringEntries()
-                        // Create test data if needed (for development)
-                        #if DEBUG
-                        createTestDataIfNeeded()
-                        #endif
                     }
                     .task {
                         // Auto-sync entries when app launches
@@ -205,103 +201,4 @@ struct RootView: View {
 
         NotificationManager.shared.scheduleNotifications(for: upcomingEntries)
     }
-
-    #if DEBUG
-    private func createTestDataIfNeeded() {
-        // Only create test data if no users exist
-        guard users.isEmpty else { return }
-
-        let calendar = Calendar.current
-        let today = Date()
-        let ownerId = AuthState.shared.instantDBUserId
-
-        // Create first user - Aseka
-        let aseka = User(name: "Aseka", emoji: "👧", ownerId: ownerId)
-        aseka.hasCompletedOnboarding = true
-
-        let asekaSectionId = UUID()
-        let asekaSections = CustomSection(
-            id: asekaSectionId,
-            name: "Kid's Activities",
-            icon: "figure.run",
-            suggestedActivities: ["Art class", "Ballet", "Chess club", "Coding class", "Dance class",
-                                  "Gymnastics", "Karate", "Piano lessons", "Soccer practice", "Swimming"],
-            user: aseka
-        )
-        aseka.customSections.append(asekaSections)
-        aseka.tabOrder.append(asekaSectionId.uuidString)
-
-        // Create second user - Arystan
-        let arystan = User(name: "Arystan", emoji: "👦", ownerId: ownerId)
-        arystan.hasCompletedOnboarding = true
-
-        let arystanSectionId = UUID()
-        let arystanSections = CustomSection(
-            id: arystanSectionId,
-            name: "Kids Activities",
-            icon: "figure.run",
-            suggestedActivities: ["Art class", "Ballet", "Chess club", "Coding class", "Dance class",
-                                  "Gymnastics", "Karate", "Piano lessons", "Soccer practice", "Swimming"],
-            user: arystan
-        )
-        arystan.customSections.append(arystanSections)
-        arystan.tabOrder.append(arystanSectionId.uuidString)
-
-        // Insert users
-        modelContext.insert(aseka)
-        modelContext.insert(arystan)
-
-        // Create test entries for Aseka
-        let asekaDates = [
-            (days: 3, title: "Art class", hour: 11, minute: 0),
-            (days: 4, title: "Ballet", hour: 14, minute: 0),
-            (days: 10, title: "Art class", hour: 11, minute: 0),
-            (days: 11, title: "Ballet", hour: 14, minute: 0)
-        ]
-
-        for dateInfo in asekaDates {
-            if let date = calendar.date(byAdding: .day, value: dateInfo.days, to: today) {
-                var startTime = calendar.date(bySettingHour: dateInfo.hour, minute: dateInfo.minute, second: 0, of: date)
-                var endTime = calendar.date(byAdding: .hour, value: 1, to: startTime ?? date)
-
-                let entry = CustomEntry(
-                    title: dateInfo.title,
-                    date: date,
-                    startTime: startTime,
-                    endTime: endTime,
-                    section: asekaSections,
-                    user: aseka
-                )
-                modelContext.insert(entry)
-            }
-        }
-
-        // Create test entries for Arystan
-        let arystanDates = [
-            (days: 3, title: "Soccer", hour: 11, minute: 0),
-            (days: 4, title: "Karate", hour: 16, minute: 0),
-            (days: 10, title: "Soccer", hour: 11, minute: 0),
-            (days: 11, title: "Karate", hour: 16, minute: 0)
-        ]
-
-        for dateInfo in arystanDates {
-            if let date = calendar.date(byAdding: .day, value: dateInfo.days, to: today) {
-                var startTime = calendar.date(bySettingHour: dateInfo.hour, minute: dateInfo.minute, second: 0, of: date)
-                var endTime = calendar.date(byAdding: .hour, value: 1, to: startTime ?? date)
-
-                let entry = CustomEntry(
-                    title: dateInfo.title,
-                    date: date,
-                    startTime: startTime,
-                    endTime: endTime,
-                    section: arystanSections,
-                    user: arystan
-                )
-                modelContext.insert(entry)
-            }
-        }
-
-        syncLogger.notice("Created test data for Aseka and Arystan")
-    }
-    #endif
 }
