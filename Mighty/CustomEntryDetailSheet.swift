@@ -19,6 +19,14 @@ struct CustomEntryDetailSheet: View {
     @State private var notifyMe: Bool
     @State private var displayedImages: [UIImage] = []
 
+    // Recurrence state
+    @State private var isRepeating: Bool
+    @State private var recurrencePattern: RecurrencePattern
+    @State private var selectedWeekdays: Set<Int>
+    @State private var endCondition: RecurrenceEndCondition
+    @State private var recurrenceEndDate: Date
+    @State private var occurrenceCount: Int
+
     @State private var isEditing = false
     @State private var showingPermissionDenied = false
     @State private var showDeleteConfirmation = false
@@ -53,6 +61,21 @@ struct CustomEntryDetailSheet: View {
         _notifyMe = State(initialValue: entry.notifyBefore)
         let images = entry.imagesData.compactMap { UIImage(data: $0) }
         _displayedImages = State(initialValue: images)
+
+        // Initialize recurrence state
+        _isRepeating = State(initialValue: entry.recurrenceGroupId != nil)
+        _recurrencePattern = State(initialValue: entry.recurrencePattern ?? .weekly)
+        _selectedWeekdays = State(initialValue: Set(entry.recurrenceWeekdays ?? []))
+        _endCondition = State(initialValue: {
+            if entry.recurrenceEndDate != nil {
+                return .onDate
+            } else if entry.recurrenceOccurrenceCount != nil {
+                return .afterOccurrences
+            }
+            return .never
+        }())
+        _recurrenceEndDate = State(initialValue: entry.recurrenceEndDate ?? Calendar.current.date(byAdding: .month, value: 3, to: Date())!)
+        _occurrenceCount = State(initialValue: entry.recurrenceOccurrenceCount ?? 10)
     }
 
     private var filteredSuggestions: [String] {
@@ -212,6 +235,82 @@ struct CustomEntryDetailSheet: View {
                         }
                     } header: {
                         Text("Schedule Conflict")
+                    }
+                }
+
+                // Repeat section
+                Section("Repeat") {
+                    if isEditing {
+                        Toggle("Repeat", isOn: $isRepeating)
+
+                        if isRepeating {
+                            Picker("Frequency", selection: $recurrencePattern) {
+                                ForEach(RecurrencePattern.allCases, id: \.self) { pattern in
+                                    Text(pattern.displayName).tag(pattern)
+                                }
+                            }
+
+                            if recurrencePattern == .weekly || recurrencePattern == .biweekly {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("On days")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    WeekdayPicker(selectedWeekdays: $selectedWeekdays)
+                                }
+                                .padding(.vertical, 4)
+                            }
+
+                            Picker("Ends", selection: $endCondition) {
+                                ForEach(RecurrenceEndCondition.allCases, id: \.self) { condition in
+                                    Text(condition.rawValue).tag(condition)
+                                }
+                            }
+
+                            if endCondition == .onDate {
+                                DatePicker("End Date", selection: $recurrenceEndDate, displayedComponents: .date)
+                            } else if endCondition == .afterOccurrences {
+                                Stepper("After \(occurrenceCount) times", value: $occurrenceCount, in: 2...100)
+                            }
+                        }
+                    } else {
+                        if entry.isRecurring {
+                            HStack {
+                                Text("Frequency")
+                                Spacer()
+                                Text(entry.recurrencePattern?.displayName ?? "Unknown")
+                                    .foregroundColor(.gray)
+                            }
+                            if let weekdays = entry.recurrenceWeekdays, !weekdays.isEmpty {
+                                HStack {
+                                    Text("Days")
+                                    Spacer()
+                                    Text(formatWeekdays(weekdays))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            if let endDate = entry.recurrenceEndDate {
+                                HStack {
+                                    Text("Ends")
+                                    Spacer()
+                                    Text(dateFormatter.string(from: endDate))
+                                        .foregroundColor(.gray)
+                                }
+                            } else if let count = entry.recurrenceOccurrenceCount {
+                                HStack {
+                                    Text("Ends")
+                                    Spacer()
+                                    Text("After \(count) times")
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                        } else {
+                            HStack {
+                                Text("Repeat")
+                                Spacer()
+                                Text("None")
+                                    .foregroundColor(.gray)
+                            }
+                        }
                     }
                 }
 
@@ -414,6 +513,33 @@ struct CustomEntryDetailSheet: View {
         showingSuggestions = false
         displayedImages = entry.imagesData.compactMap { UIImage(data: $0) }
         conflicts = []
+
+        // Reset recurrence state
+        isRepeating = entry.recurrenceGroupId != nil
+        recurrencePattern = entry.recurrencePattern ?? .weekly
+        selectedWeekdays = Set(entry.recurrenceWeekdays ?? [])
+        if entry.recurrenceEndDate != nil {
+            endCondition = .onDate
+        } else if entry.recurrenceOccurrenceCount != nil {
+            endCondition = .afterOccurrences
+        } else {
+            endCondition = .never
+        }
+        recurrenceEndDate = entry.recurrenceEndDate ?? Calendar.current.date(byAdding: .month, value: 3, to: Date())!
+        occurrenceCount = entry.recurrenceOccurrenceCount ?? 10
+    }
+
+    private func formatWeekdays(_ weekdays: [Int]) -> String {
+        let dayNames: [Int: String] = [
+            1: "Sun", 2: "Mon", 3: "Tue", 4: "Wed", 5: "Thu", 6: "Fri", 7: "Sat"
+        ]
+        let sortedDays = weekdays.sorted { a, b in
+            // Sort starting from Monday (2)
+            let adjustedA = a == 1 ? 8 : a
+            let adjustedB = b == 1 ? 8 : b
+            return adjustedA < adjustedB
+        }
+        return sortedDays.compactMap { dayNames[$0] }.joined(separator: ", ")
     }
 
     private func checkForConflicts() {
@@ -444,6 +570,9 @@ struct CustomEntryDetailSheet: View {
             }
         }
 
+        let wasRecurring = entry.recurrenceGroupId != nil
+
+        // Update basic fields
         entry.title = trimmedTitle
         entry.notes = notes.isEmpty ? nil : notes
         entry.date = selectedDate
@@ -451,6 +580,53 @@ struct CustomEntryDetailSheet: View {
         entry.endTime = (hasTime && hasEndTime) ? endTime : nil
         entry.notifyBefore = hasTime && notifyMe
         entry.imagesData = displayedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        entry.updatedAt = Date()
+
+        // Handle recurrence changes
+        if isRepeating && !wasRecurring {
+            // Converting non-recurring to recurring - create new recurrence group
+            let groupId = UUID()
+            entry.recurrenceGroupId = groupId
+            entry.recurrencePattern = recurrencePattern
+            entry.recurrenceWeekdays = (recurrencePattern == .weekly || recurrencePattern == .biweekly) && !selectedWeekdays.isEmpty ? Array(selectedWeekdays) : nil
+            entry.recurrenceEndDate = endCondition == .onDate ? recurrenceEndDate : nil
+            entry.recurrenceOccurrenceCount = endCondition == .afterOccurrences ? occurrenceCount : nil
+            entry.isRecurrenceTemplate = true
+
+            // Generate new instances
+            let instances = RecurrenceService.shared.generateInstances(for: entry)
+            for instance in instances {
+                modelContext.insert(instance)
+                if instance.notifyBefore && instance.startTime != nil {
+                    NotificationManager.shared.scheduleNotification(for: instance)
+                }
+            }
+        } else if !isRepeating && wasRecurring {
+            // Converting recurring to non-recurring - remove recurrence info from this entry
+            entry.recurrenceGroupId = nil
+            entry.recurrencePattern = nil
+            entry.recurrenceWeekdays = nil
+            entry.recurrenceEndDate = nil
+            entry.recurrenceOccurrenceCount = nil
+            entry.isRecurrenceTemplate = false
+        } else if isRepeating && wasRecurring {
+            // Updating existing recurrence - update template settings
+            entry.recurrencePattern = recurrencePattern
+            entry.recurrenceWeekdays = (recurrencePattern == .weekly || recurrencePattern == .biweekly) && !selectedWeekdays.isEmpty ? Array(selectedWeekdays) : nil
+            entry.recurrenceEndDate = endCondition == .onDate ? recurrenceEndDate : nil
+            entry.recurrenceOccurrenceCount = endCondition == .afterOccurrences ? occurrenceCount : nil
+
+            // If this is a template, regenerate future instances
+            if entry.isRecurrenceTemplate, let groupId = entry.recurrenceGroupId {
+                let existingInGroup = allCustomEntries.filter { $0.recurrenceGroupId == groupId }
+                RecurrenceService.shared.regenerateFutureInstances(
+                    for: groupId,
+                    template: entry,
+                    existingEntries: existingInGroup,
+                    in: modelContext
+                )
+            }
+        }
 
         // Update notification based on new settings
         if hasTime && notifyMe {

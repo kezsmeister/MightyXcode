@@ -8,10 +8,12 @@ struct OnboardingView: View {
     @State private var currentStep = 0
     @State private var userName = ""
     @State private var userEmoji = "😊"
-    @State private var sectionDescription = ""
-    @State private var sectionName = ""
-    @State private var selectedIcon = "star.fill"
-    @State private var suggestedActivities: [String] = []
+    @State private var sectionName = "Kid's Activities"
+    @State private var selectedIcon = "figure.run"
+    @State private var suggestedActivities: [String] = [
+        "Art class", "Ballet", "Chess club", "Coding class", "Dance class",
+        "Gymnastics", "Karate", "Piano lessons", "Soccer practice", "Swimming"
+    ]
     @State private var customActivity = ""
     @State private var enableMovies = false
     @State private var enableBooks = false
@@ -34,7 +36,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 0) {
                 // Progress indicator
-                ProgressView(value: Double(currentStep + 1), total: 5)
+                ProgressView(value: Double(currentStep + 1), total: 4)
                     .tint(.purple)
                     .padding()
 
@@ -46,10 +48,8 @@ struct OnboardingView: View {
                     case 1:
                         createUserStep
                     case 2:
-                        descriptionStep
-                    case 3:
                         suggestionsStep
-                    case 4:
+                    case 3:
                         templatesStep
                     default:
                         EmptyView()
@@ -65,7 +65,7 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "sparkles")
+            Image(systemName: "figure.run")
                 .font(.system(size: 80))
                 .foregroundColor(.purple)
 
@@ -73,7 +73,7 @@ struct OnboardingView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
-            Text("Track activities, build habits, and celebrate progress")
+            Text("Track your kids' activities, schedules, and celebrate their progress")
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -100,11 +100,11 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Text("Who's tracking?")
+            Text("Create a profile")
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("Create a profile for the person you're tracking activities for")
+            Text("Add your child's name and pick an emoji")
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -152,71 +152,17 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 2: Description
-    private var descriptionStep: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            Image(systemName: "rectangle.stack.badge.plus")
-                .font(.system(size: 60))
-                .foregroundColor(.purple)
-
-            Text("What would you like to track?")
-                .font(.title2)
-                .fontWeight(.bold)
-
-            Text("Describe what you want to track and we'll suggest activities")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            TextField("e.g., track my kids activities", text: $sectionDescription)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 32)
-                .onKeyPress(.tab) {
-                    if sectionDescription.isEmpty {
-                        sectionDescription = "track my kids activities"
-                    }
-                    return .handled
-                }
-
-            Spacer()
-
-            HStack(spacing: 16) {
-                Button(action: { withAnimation { currentStep = 1 } }) {
-                    Text("Back")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(white: 0.2))
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-
-                Button(action: generateSuggestionsAndAdvance) {
-                    Text("Next")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(sectionDescription.isEmpty ? Color.gray : Color.purple)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .disabled(sectionDescription.isEmpty)
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-        }
-    }
-
-    // MARK: - Step 3: Suggestions
+    // MARK: - Step 2: Customize Activities
     private var suggestionsStep: some View {
         VStack(spacing: 16) {
             Text("Customize Activities")
                 .font(.title2)
                 .fontWeight(.bold)
                 .padding(.top)
+
+            Text("Add or remove activities your child does")
+                .font(.subheadline)
+                .foregroundColor(.gray)
 
             // Section name and icon
             HStack(spacing: 12) {
@@ -276,7 +222,7 @@ struct OnboardingView: View {
             Spacer()
 
             HStack(spacing: 16) {
-                Button(action: { withAnimation { currentStep = 2 } }) {
+                Button(action: { withAnimation { currentStep = 1 } }) {
                     Text("Back")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
@@ -286,7 +232,7 @@ struct OnboardingView: View {
                         .cornerRadius(12)
                 }
 
-                Button(action: { withAnimation { currentStep = 4 } }) {
+                Button(action: { withAnimation { currentStep = 3 } }) {
                     Text("Next")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
@@ -302,7 +248,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 4: Templates
+    // MARK: - Step 3: Templates
     private var templatesStep: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -315,7 +261,7 @@ struct OnboardingView: View {
                 .font(.title2)
                 .fontWeight(.bold)
 
-            Text("Enable these templates to track movies and books with search integration")
+            Text("Track what your kids watch and read with cover art")
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -325,14 +271,14 @@ struct OnboardingView: View {
                 TemplateToggleCard(
                     icon: "film",
                     title: "Movies & TV Shows",
-                    description: "Track what you watch with poster art",
+                    description: "Track what they watch with poster art",
                     isEnabled: $enableMovies
                 )
 
                 TemplateToggleCard(
                     icon: "book.fill",
                     title: "Books",
-                    description: "Track your reading with cover images",
+                    description: "Track their reading with cover images",
                     isEnabled: $enableBooks
                 )
             }
@@ -342,7 +288,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 12) {
                 HStack(spacing: 16) {
-                    Button(action: { withAnimation { currentStep = 3 } }) {
+                    Button(action: { withAnimation { currentStep = 2 } }) {
                         Text("Back")
                             .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
@@ -375,11 +321,6 @@ struct OnboardingView: View {
     }
 
     // MARK: - Actions
-    private func generateSuggestionsAndAdvance() {
-        suggestedActivities = ActivitySuggestionService.generateSuggestions(for: sectionDescription)
-        sectionName = ActivitySuggestionService.extractSectionName(from: sectionDescription)
-        withAnimation { currentStep = 3 }
-    }
 
     private func addCustomActivity() {
         guard !customActivity.isEmpty else { return }
