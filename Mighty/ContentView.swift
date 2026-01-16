@@ -356,12 +356,14 @@ struct ContentView: View {
             formatter.dateFormat = "MMM d"
             let year = calendar.component(.year, from: startOfWeek)
             return "\(formatter.string(from: startOfWeek)) - \(formatter.string(from: endOfWeek)), \(year)"
+        case .agenda:
+            return "Family Agenda"
         }
     }
 
     private func toggleViewMode() {
         withAnimation(.easeInOut(duration: 0.3)) {
-            calendarViewMode = calendarViewMode == .month ? .week : .month
+            calendarViewMode = calendarViewMode.next
         }
     }
 
@@ -372,6 +374,8 @@ struct ContentView: View {
                 selectedDate = Calendar.current.date(byAdding: .month, value: -1, to: selectedDate) ?? selectedDate
             case .week:
                 selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: selectedDate) ?? selectedDate
+            case .agenda:
+                break // Agenda shows fixed 2-week window from today
             }
         }
     }
@@ -383,6 +387,8 @@ struct ContentView: View {
                 selectedDate = Calendar.current.date(byAdding: .month, value: 1, to: selectedDate) ?? selectedDate
             case .week:
                 selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: selectedDate) ?? selectedDate
+            case .agenda:
+                break // Agenda shows fixed 2-week window from today
             }
         }
     }
@@ -493,6 +499,16 @@ struct ContentView: View {
                     customSections: userCustomSections,
                     onDayTap: handleDayTap,
                     onActivityTap: { entry in
+                        selectedCustomEntry = entry
+                        selectedEntry = nil
+                        showingDetailSheet = true
+                    }
+                )
+            case .agenda:
+                MainAgendaView(
+                    users: users,
+                    customEntries: customEntries,
+                    onEntryTap: { entry in
                         selectedCustomEntry = entry
                         selectedEntry = nil
                         showingDetailSheet = true

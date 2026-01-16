@@ -33,11 +33,21 @@ enum SelectedTab: Hashable {
 enum CalendarViewMode: String, CaseIterable {
     case month = "Month"
     case week = "Week"
+    case agenda = "Agenda"
 
     var icon: String {
         switch self {
         case .month: return "calendar"
         case .week: return "calendar.day.timeline.left"
+        case .agenda: return "list.bullet.rectangle"
+        }
+    }
+
+    var next: CalendarViewMode {
+        switch self {
+        case .month: return .agenda
+        case .week: return .agenda  // Skip week, go to agenda
+        case .agenda: return .month
         }
     }
 }

@@ -1,6 +1,11 @@
 import SwiftUI
 import SwiftData
 
+enum DashboardViewMode: String, CaseIterable {
+    case cards = "Cards"
+    case agenda = "Agenda"
+}
+
 struct KidsDashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +18,7 @@ struct KidsDashboardView: View {
 
     @State private var selectedDate = Date()
     @State private var quickAddUser: User?
+    @State private var viewMode: DashboardViewMode = .cards
 
     private var users: [User] {
         let currentOwnerId = AuthState.shared.instantDBUserId
@@ -34,40 +40,61 @@ struct KidsDashboardView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Date selector
-                        dateSelector
-
-                        // Summary header
-                        summaryHeader
-
-                        // Kids cards
-                        LazyVStack(spacing: 16) {
-                            ForEach(users) { user in
-                                KidActivityCard(
-                                    user: user,
-                                    date: selectedDate,
-                                    customEntries: entriesForUser(user),
-                                    mediaEntries: mediaEntriesForUser(user),
-                                    onTap: {
-                                        selectedUser = user
-                                        onUserSelected(user)
-                                        dismiss()
-                                    },
-                                    onQuickAdd: {
-                                        quickAddUser = user
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        if users.isEmpty {
-                            emptyState
+                VStack(spacing: 0) {
+                    // View mode picker
+                    Picker("View", selection: $viewMode) {
+                        ForEach(DashboardViewMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
-                    .padding(.vertical)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    if viewMode == .cards {
+                        // Cards view (existing)
+                        ScrollView {
+                            VStack(spacing: 20) {
+                                // Date selector
+                                dateSelector
+
+                                // Summary header
+                                summaryHeader
+
+                                // Kids cards
+                                LazyVStack(spacing: 16) {
+                                    ForEach(users) { user in
+                                        KidActivityCard(
+                                            user: user,
+                                            date: selectedDate,
+                                            customEntries: entriesForUser(user),
+                                            mediaEntries: mediaEntriesForUser(user),
+                                            onTap: {
+                                                selectedUser = user
+                                                onUserSelected(user)
+                                                dismiss()
+                                            },
+                                            onQuickAdd: {
+                                                quickAddUser = user
+                                            }
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal)
+
+                                if users.isEmpty {
+                                    emptyState
+                                }
+                            }
+                            .padding(.vertical)
+                        }
+                    } else {
+                        // Agenda view
+                        AgendaContentView(
+                            users: users,
+                            allCustomEntries: allCustomEntries
+                        )
+                    }
                 }
             }
             .navigationTitle("Family Dashboard")
@@ -480,6 +507,428 @@ struct QuickAddSectionButton: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Agenda Content View (embedded in dashboard)
+
+struct AgendaContentView: View {
+    let users: [User]
+    let allCustomEntries: [CustomEntry]
+
+    @State private var selectedEntry: CustomEntry?
+    @State private var showingEntryDetail = false
+
+    // Get entries for the next 14 days, grouped by date
+    private var groupedEntries: [(date: Date, entries: [AgendaItem])] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let twoWeeksLater = calendar.date(byAdding: .day, value: 14, to: today) else {
+            return []
+        }
+
+        // Get all entries for our users within the date range
+        let userIds = Set(users.map { $0.id })
+        let relevantEntries = allCustomEntries.filter { entry in
+            guard let userId = entry.user?.id else { return false }
+            guard userIds.contains(userId) else { return false }
+            let entryDate = calendar.startOfDay(for: entry.date)
+            return entryDate >= today && entryDate <= twoWeeksLater
+        }
+
+        // Convert to AgendaItem and group by date
+        var entriesByDate: [Date: [AgendaItem]] = [:]
+
+        for entry in relevantEntries {
+            let dateKey = calendar.startOfDay(for: entry.date)
+            let agendaItem = AgendaItem(
+                id: entry.id,
+                title: entry.title,
+                time: entry.startTime,
+                endTime: entry.endTime,
+                userName: entry.user?.name ?? "Unknown",
+                userEmoji: entry.user?.emoji ?? "👤",
+                sectionName: entry.section?.name ?? "",
+                sectionIcon: entry.section?.icon ?? "star.fill",
+                customEntry: entry
+            )
+
+            if entriesByDate[dateKey] != nil {
+                entriesByDate[dateKey]?.append(agendaItem)
+            } else {
+                entriesByDate[dateKey] = [agendaItem]
+            }
+        }
+
+        // Sort entries within each day by time
+        for (date, entries) in entriesByDate {
+            entriesByDate[date] = entries.sorted { a, b in
+                guard let timeA = a.time else { return false }
+                guard let timeB = b.time else { return true }
+                return timeA < timeB
+            }
+        }
+
+        // Sort dates and return
+        return entriesByDate
+            .sorted { $0.key < $1.key }
+            .map { (date: $0.key, entries: $0.value) }
+    }
+
+    private var totalActivitiesCount: Int {
+        groupedEntries.reduce(0) { $0 + $1.entries.count }
+    }
+
+    var body: some View {
+        if groupedEntries.isEmpty {
+            VStack(spacing: 16) {
+                Spacer()
+                Image(systemName: "calendar")
+                    .font(.system(size: 50))
+                    .foregroundColor(.gray.opacity(0.5))
+
+                Text("No Upcoming Activities")
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                Text("Activities scheduled for the next 2 weeks will appear here")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                Spacer()
+            }
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Summary header
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Next 2 Weeks")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+
+                            Text("\(totalActivitiesCount) activities")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+
+                        Spacer()
+
+                        // Kid avatars
+                        HStack(spacing: -8) {
+                            ForEach(users.prefix(4)) { user in
+                                Text(user.emoji)
+                                    .font(.callout)
+                                    .frame(width: 28, height: 28)
+                                    .background(
+                                        Circle()
+                                            .fill(Color(white: 0.15))
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(Color.black, lineWidth: 2)
+                                            )
+                                    )
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+
+                    // Agenda list
+                    LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
+                        ForEach(groupedEntries, id: \.date) { group in
+                            Section {
+                                ForEach(group.entries) { entry in
+                                    AgendaItemRow(entry: entry)
+                                        .onTapGesture {
+                                            selectedEntry = entry.customEntry
+                                            showingEntryDetail = true
+                                        }
+                                }
+                            } header: {
+                                AgendaDateHeader(date: group.date, count: group.entries.count)
+                            }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingEntryDetail) {
+                if let entry = selectedEntry {
+                    CustomEntryDetailSheet(entry: entry)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Agenda Supporting Types
+
+struct AgendaItem: Identifiable {
+    let id: UUID
+    let title: String
+    let time: Date?
+    let endTime: Date?
+    let userName: String
+    let userEmoji: String
+    let sectionName: String
+    let sectionIcon: String
+    let customEntry: CustomEntry
+}
+
+struct AgendaDateHeader: View {
+    let date: Date
+    let count: Int
+
+    private var dateText: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInTomorrow(date) {
+            return "Tomorrow"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEEE, MMM d"
+            return formatter.string(from: date)
+        }
+    }
+
+    private var isToday: Bool {
+        Calendar.current.isDateInToday(date)
+    }
+
+    var body: some View {
+        HStack {
+            Text(dateText)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isToday ? .purple : .white)
+
+            Spacer()
+
+            Text("\(count)")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.gray)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(Color(white: 0.2))
+                )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.black)
+    }
+}
+
+struct AgendaItemRow: View {
+    let entry: AgendaItem
+
+    private var timeText: String {
+        guard let time = entry.time else { return "All day" }
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        if let endTime = entry.endTime {
+            return "\(formatter.string(from: time)) - \(formatter.string(from: endTime))"
+        }
+        return formatter.string(from: time)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Time column
+            Text(timeText)
+                .font(.caption)
+                .foregroundColor(.gray)
+                .frame(width: 80, alignment: .leading)
+
+            // Kid emoji
+            Text(entry.userEmoji)
+                .font(.callout)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(Color.purple.opacity(0.2))
+                )
+
+            // Activity details
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                HStack(spacing: 4) {
+                    Text(entry.userName)
+                        .font(.caption)
+                        .foregroundColor(.purple)
+
+                    if !entry.sectionName.isEmpty {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+
+                        Image(systemName: entry.sectionIcon)
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+
+                        Text(entry.sectionName)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.gray.opacity(0.5))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.black)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Main Agenda View (for ContentView calendar section)
+
+struct MainAgendaView: View {
+    let users: [User]
+    let customEntries: [CustomEntry]
+    let onEntryTap: (CustomEntry) -> Void
+
+    // Get entries for the next 14 days, grouped by date
+    private var groupedEntries: [(date: Date, entries: [AgendaItem])] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let twoWeeksLater = calendar.date(byAdding: .day, value: 14, to: today) else {
+            return []
+        }
+
+        // Get all entries for our users within the date range
+        let userIds = Set(users.map { $0.id })
+        let relevantEntries = customEntries.filter { entry in
+            guard let userId = entry.user?.id else { return false }
+            guard userIds.contains(userId) else { return false }
+            let entryDate = calendar.startOfDay(for: entry.date)
+            return entryDate >= today && entryDate <= twoWeeksLater
+        }
+
+        // Convert to AgendaItem and group by date
+        var entriesByDate: [Date: [AgendaItem]] = [:]
+
+        for entry in relevantEntries {
+            let dateKey = calendar.startOfDay(for: entry.date)
+            let agendaItem = AgendaItem(
+                id: entry.id,
+                title: entry.title,
+                time: entry.startTime,
+                endTime: entry.endTime,
+                userName: entry.user?.name ?? "Unknown",
+                userEmoji: entry.user?.emoji ?? "👤",
+                sectionName: entry.section?.name ?? "",
+                sectionIcon: entry.section?.icon ?? "star.fill",
+                customEntry: entry
+            )
+
+            if entriesByDate[dateKey] != nil {
+                entriesByDate[dateKey]?.append(agendaItem)
+            } else {
+                entriesByDate[dateKey] = [agendaItem]
+            }
+        }
+
+        // Sort entries within each day by time
+        for (date, entries) in entriesByDate {
+            entriesByDate[date] = entries.sorted { a, b in
+                guard let timeA = a.time else { return false }
+                guard let timeB = b.time else { return true }
+                return timeA < timeB
+            }
+        }
+
+        // Sort dates and return
+        return entriesByDate
+            .sorted { $0.key < $1.key }
+            .map { (date: $0.key, entries: $0.value) }
+    }
+
+    private var totalActivitiesCount: Int {
+        groupedEntries.reduce(0) { $0 + $1.entries.count }
+    }
+
+    var body: some View {
+        if groupedEntries.isEmpty {
+            VStack(spacing: 16) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 50))
+                    .foregroundColor(.gray.opacity(0.5))
+
+                Text("No Upcoming Activities")
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                Text("Activities for the next 2 weeks will appear here")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Summary
+                    HStack {
+                        Text("\(totalActivitiesCount) activities")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+
+                        Spacer()
+
+                        // Kid avatars
+                        HStack(spacing: -6) {
+                            ForEach(users.prefix(5)) { user in
+                                Text(user.emoji)
+                                    .font(.caption)
+                                    .frame(width: 24, height: 24)
+                                    .background(
+                                        Circle()
+                                            .fill(Color(white: 0.15))
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(Color.black, lineWidth: 1.5)
+                                            )
+                                    )
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 12)
+
+                    // Agenda list
+                    LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
+                        ForEach(groupedEntries, id: \.date) { group in
+                            Section {
+                                ForEach(group.entries) { entry in
+                                    AgendaItemRow(entry: entry)
+                                        .onTapGesture {
+                                            onEntryTap(entry.customEntry)
+                                        }
+                                }
+                            } header: {
+                                AgendaDateHeader(date: group.date, count: group.entries.count)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
