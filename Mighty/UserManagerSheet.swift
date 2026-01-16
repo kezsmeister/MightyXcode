@@ -240,11 +240,14 @@ struct AddUserSheet: View {
         )
         user.hasCompletedOnboarding = true  // Skip onboarding for manually added users
 
-        // Create default "Kids Activities" section
+        // Create default "Kid's Activities" section with same activities as onboarding
         let defaultSection = CustomSection(
-            name: "Kids Activities",
-            icon: "figure.play",
-            suggestedActivities: ["Soccer", "Piano", "Swimming", "Dance", "Art Class", "Gymnastics"],
+            name: "Kid's Activities",
+            icon: "figure.run",
+            suggestedActivities: [
+                "Art class", "Ballet", "Chess club", "Coding class", "Dance class",
+                "Gymnastics", "Karate", "Piano lessons", "Soccer practice", "Swimming"
+            ],
             user: user
         )
         user.customSections.append(defaultSection)
