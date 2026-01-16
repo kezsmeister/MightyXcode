@@ -519,13 +519,13 @@ struct AgendaContentView: View {
     @State private var selectedEntry: CustomEntry?
     @State private var showingEntryDetail = false
 
-    // Map user IDs to colors based on order
-    private var userColorMap: [UUID: Color] {
-        var map: [UUID: Color] = [:]
-        for (index, user) in users.enumerated() {
-            map[user.id] = colorForUserIndex(index)
+    // Get color for a user based on their index in the users array
+    private func colorForUser(_ user: User?) -> Color {
+        guard let user = user,
+              let index = users.firstIndex(where: { $0.id == user.id }) else {
+            return .purple
         }
-        return map
+        return colorForUserIndex(index)
     }
 
     // Get entries for the next 14 days, grouped by date
@@ -547,11 +547,9 @@ struct AgendaContentView: View {
 
         // Convert to AgendaItem and group by date
         var entriesByDate: [Date: [AgendaItem]] = [:]
-        let colorMap = userColorMap
 
         for entry in relevantEntries {
             let dateKey = calendar.startOfDay(for: entry.date)
-            let userId = entry.user?.id
             let agendaItem = AgendaItem(
                 id: entry.id,
                 title: entry.title,
@@ -559,7 +557,7 @@ struct AgendaContentView: View {
                 endTime: entry.endTime,
                 userName: entry.user?.name ?? "Unknown",
                 userEmoji: entry.user?.emoji ?? "👤",
-                userColor: userId != nil ? (colorMap[userId!] ?? .purple) : .purple,
+                userColor: colorForUser(entry.user),
                 sectionName: entry.section?.name ?? "",
                 sectionIcon: entry.section?.icon ?? "star.fill",
                 customEntry: entry
@@ -823,13 +821,13 @@ struct MainAgendaView: View {
     let customEntries: [CustomEntry]
     let onEntryTap: (CustomEntry) -> Void
 
-    // Map user IDs to colors based on order
-    private var userColorMap: [UUID: Color] {
-        var map: [UUID: Color] = [:]
-        for (index, user) in users.enumerated() {
-            map[user.id] = colorForUserIndex(index)
+    // Get color for a user based on their index in the users array
+    private func colorForUser(_ user: User?) -> Color {
+        guard let user = user,
+              let index = users.firstIndex(where: { $0.id == user.id }) else {
+            return .purple
         }
-        return map
+        return colorForUserIndex(index)
     }
 
     // Get entries for the next 14 days, grouped by date
@@ -851,11 +849,9 @@ struct MainAgendaView: View {
 
         // Convert to AgendaItem and group by date
         var entriesByDate: [Date: [AgendaItem]] = [:]
-        let colorMap = userColorMap
 
         for entry in relevantEntries {
             let dateKey = calendar.startOfDay(for: entry.date)
-            let userId = entry.user?.id
             let agendaItem = AgendaItem(
                 id: entry.id,
                 title: entry.title,
@@ -863,7 +859,7 @@ struct MainAgendaView: View {
                 endTime: entry.endTime,
                 userName: entry.user?.name ?? "Unknown",
                 userEmoji: entry.user?.emoji ?? "👤",
-                userColor: userId != nil ? (colorMap[userId!] ?? .purple) : .purple,
+                userColor: colorForUser(entry.user),
                 sectionName: entry.section?.name ?? "",
                 sectionIcon: entry.section?.icon ?? "star.fill",
                 customEntry: entry

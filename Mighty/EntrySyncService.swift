@@ -483,7 +483,9 @@ actor EntrySyncService {
             let hour = entry.startTime.map { calendar.component(.hour, from: $0) } ?? -1
             let minute = entry.startTime.map { calendar.component(.minute, from: $0) } ?? -1
             let day = calendar.startOfDay(for: entry.date).timeIntervalSince1970
-            let key = "\(entry.title)-\(day)-\(hour)-\(minute)"
+            let sectionId = entry.section?.id.uuidString ?? "unknown"
+            // Include sectionId in key to allow same activity for different users
+            let key = "\(sectionId)-\(entry.title)-\(day)-\(hour)-\(minute)"
             processedKeys.insert(key)
         }
 
@@ -536,11 +538,11 @@ actor EntrySyncService {
                     existingEntry.updatedAt = cloudDate
                 }
             } else {
-                // Build key for this cloud entry
+                // Build key for this cloud entry (include section ID to allow same activity for different users)
                 let cloudHour = cloudStartTime.map { calendar.component(.hour, from: $0) } ?? -1
                 let cloudMinute = cloudStartTime.map { calendar.component(.minute, from: $0) } ?? -1
                 let cloudDay = cloudDate.map { calendar.startOfDay(for: $0).timeIntervalSince1970 } ?? 0
-                let cloudKey = "\(cloudEntry.title)-\(cloudDay)-\(cloudHour)-\(cloudMinute)"
+                let cloudKey = "\(section.id.uuidString)-\(cloudEntry.title)-\(cloudDay)-\(cloudHour)-\(cloudMinute)"
 
                 // Check if we've already processed this entry (either existed or created in this sync)
                 if processedKeys.contains(cloudKey) {
