@@ -519,6 +519,15 @@ struct AgendaContentView: View {
     @State private var selectedEntry: CustomEntry?
     @State private var showingEntryDetail = false
 
+    // Map user IDs to colors based on order
+    private var userColorMap: [UUID: Color] {
+        var map: [UUID: Color] = [:]
+        for (index, user) in users.enumerated() {
+            map[user.id] = colorForUserIndex(index)
+        }
+        return map
+    }
+
     // Get entries for the next 14 days, grouped by date
     private var groupedEntries: [(date: Date, entries: [AgendaItem])] {
         let calendar = Calendar.current
@@ -538,9 +547,11 @@ struct AgendaContentView: View {
 
         // Convert to AgendaItem and group by date
         var entriesByDate: [Date: [AgendaItem]] = [:]
+        let colorMap = userColorMap
 
         for entry in relevantEntries {
             let dateKey = calendar.startOfDay(for: entry.date)
+            let userId = entry.user?.id
             let agendaItem = AgendaItem(
                 id: entry.id,
                 title: entry.title,
@@ -548,6 +559,7 @@ struct AgendaContentView: View {
                 endTime: entry.endTime,
                 userName: entry.user?.name ?? "Unknown",
                 userEmoji: entry.user?.emoji ?? "👤",
+                userColor: userId != nil ? (colorMap[userId!] ?? .purple) : .purple,
                 sectionName: entry.section?.name ?? "",
                 sectionIcon: entry.section?.icon ?? "star.fill",
                 customEntry: entry
@@ -672,9 +684,17 @@ struct AgendaItem: Identifiable {
     let endTime: Date?
     let userName: String
     let userEmoji: String
+    let userColor: Color
     let sectionName: String
     let sectionIcon: String
     let customEntry: CustomEntry
+}
+
+// Kid colors for differentiation
+let kidColors: [Color] = [.purple, .green, .orange, .cyan, .pink, .yellow, .mint, .indigo]
+
+func colorForUserIndex(_ index: Int) -> Color {
+    kidColors[index % kidColors.count]
 }
 
 struct AgendaDateHeader: View {
@@ -751,7 +771,7 @@ struct AgendaItemRow: View {
                 .frame(width: 28, height: 28)
                 .background(
                     Circle()
-                        .fill(Color.purple.opacity(0.2))
+                        .fill(entry.userColor.opacity(0.2))
                 )
 
             // Activity details
@@ -765,7 +785,7 @@ struct AgendaItemRow: View {
                 HStack(spacing: 4) {
                     Text(entry.userName)
                         .font(.caption)
-                        .foregroundColor(.purple)
+                        .foregroundColor(entry.userColor)
 
                     if !entry.sectionName.isEmpty {
                         Text("•")
@@ -803,6 +823,15 @@ struct MainAgendaView: View {
     let customEntries: [CustomEntry]
     let onEntryTap: (CustomEntry) -> Void
 
+    // Map user IDs to colors based on order
+    private var userColorMap: [UUID: Color] {
+        var map: [UUID: Color] = [:]
+        for (index, user) in users.enumerated() {
+            map[user.id] = colorForUserIndex(index)
+        }
+        return map
+    }
+
     // Get entries for the next 14 days, grouped by date
     private var groupedEntries: [(date: Date, entries: [AgendaItem])] {
         let calendar = Calendar.current
@@ -822,9 +851,11 @@ struct MainAgendaView: View {
 
         // Convert to AgendaItem and group by date
         var entriesByDate: [Date: [AgendaItem]] = [:]
+        let colorMap = userColorMap
 
         for entry in relevantEntries {
             let dateKey = calendar.startOfDay(for: entry.date)
+            let userId = entry.user?.id
             let agendaItem = AgendaItem(
                 id: entry.id,
                 title: entry.title,
@@ -832,6 +863,7 @@ struct MainAgendaView: View {
                 endTime: entry.endTime,
                 userName: entry.user?.name ?? "Unknown",
                 userEmoji: entry.user?.emoji ?? "👤",
+                userColor: userId != nil ? (colorMap[userId!] ?? .purple) : .purple,
                 sectionName: entry.section?.name ?? "",
                 sectionIcon: entry.section?.icon ?? "star.fill",
                 customEntry: entry
