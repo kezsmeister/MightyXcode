@@ -102,8 +102,9 @@ struct WeeklyScheduleView: View {
         case .media:
             return []  // Media entries not shown in weekly view
         case .custom(let sectionId):
+            // Filter out recurrence templates - they're master records, not actual scheduled activities
             return customEntries
-                .filter { $0.containsDate(date) && $0.section?.id == sectionId }
+                .filter { $0.containsDate(date) && $0.section?.id == sectionId && !$0.isRecurrenceTemplate }
                 .sorted { ($0.startTime ?? Date.distantFuture) < ($1.startTime ?? Date.distantFuture) }
         }
     }

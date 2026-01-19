@@ -37,6 +37,9 @@ struct ContentView: View {
     @State private var prefilledActivityName: String?
     @State private var showingEditActivities = false
     @State private var calendarViewMode: CalendarViewMode = .month
+    @State private var showingDayActivitiesSheet = false
+    @State private var dayActivitiesEntries: [CustomEntry] = []
+    @State private var dayActivitiesMediaEntries: [MediaEntry] = []
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -208,6 +211,38 @@ struct ContentView: View {
                 onUserSelected: { user in
                     selectedUser = user
                     selectDefaultTabIfNeeded()
+                }
+            )
+        }
+        .sheet(isPresented: $showingDayActivitiesSheet) {
+            DayActivitiesSheet(
+                date: selectedDate,
+                entries: dayActivitiesEntries,
+                mediaEntries: dayActivitiesMediaEntries,
+                section: currentCustomSection,
+                mediaType: selectedTab.flatMap { tab -> MediaType? in
+                    if case .media(let type) = tab { return type }
+                    return nil
+                },
+                onEntryTap: { entry in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        selectedCustomEntry = entry
+                        selectedEntry = nil
+                        showingDetailSheet = true
+                    }
+                },
+                onMediaEntryTap: { entry in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        selectedEntry = entry
+                        selectedCustomEntry = nil
+                        showingDetailSheet = true
+                    }
+                },
+                onAddTap: {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        prefilledActivityName = nil
+                        showingAddSheet = true
+                    }
                 }
             )
         }
@@ -523,20 +558,37 @@ struct ContentView: View {
         guard let tab = selectedTab else { return }
         switch tab {
         case .media(let mediaType):
-            if let existingEntry = userEntries.first(where: { $0.containsDate(date) && $0.mediaType == mediaType }) {
+            let matchingEntries = userEntries.filter { $0.containsDate(date) && $0.mediaType == mediaType }
+            if matchingEntries.count > 1 {
+                // Multiple activities - show list sheet
+                dayActivitiesMediaEntries = matchingEntries
+                dayActivitiesEntries = []
+                showingDayActivitiesSheet = true
+            } else if let existingEntry = matchingEntries.first {
+                // Single activity - show detail directly
                 selectedEntry = existingEntry
                 selectedCustomEntry = nil
                 showingDetailSheet = true
             } else {
+                // No activities - show add sheet
                 prefilledActivityName = nil
                 showingAddSheet = true
             }
         case .custom(let sectionId):
-            if let existingEntry = userCustomEntries.first(where: { $0.containsDate(date) && $0.section?.id == sectionId }) {
+            // Filter out recurrence templates - they're master records, not actual scheduled activities
+            let matchingEntries = userCustomEntries.filter { $0.containsDate(date) && $0.section?.id == sectionId && !$0.isRecurrenceTemplate }
+            if matchingEntries.count > 1 {
+                // Multiple activities - show list sheet
+                dayActivitiesEntries = matchingEntries
+                dayActivitiesMediaEntries = []
+                showingDayActivitiesSheet = true
+            } else if let existingEntry = matchingEntries.first {
+                // Single activity - show detail directly
                 selectedCustomEntry = existingEntry
                 selectedEntry = nil
                 showingDetailSheet = true
             } else {
+                // No activities - show add sheet
                 prefilledActivityName = nil
                 showingAddSheet = true
             }
@@ -980,6 +1032,240 @@ struct SuggestedActivityRow: View {
         case "brown": return .brown
         case "gray": return .gray
         default: return .teal
+        }
+    }
+}
+
+struct DayActivitiesSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let date: Date
+    let entries: [CustomEntry]
+    let mediaEntries: [MediaEntry]
+    let section: CustomSection?
+    let mediaType: MediaType?
+    let onEntryTap: (CustomEntry) -> Void
+    let onMediaEntryTap: (MediaEntry) -> Void
+    let onAddTap: () -> Void
+
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d"
+        return formatter
+    }()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Custom entries
+                    if !entries.isEmpty {
+                        ForEach(entries.sorted(by: { ($0.startTime ?? Date.distantPast) < ($1.startTime ?? Date.distantPast) })) { entry in
+                            DayActivityRow(entry: entry)
+                                .onTapGesture {
+                                    dismiss()
+                                    onEntryTap(entry)
+                                }
+                        }
+                    }
+
+                    // Media entries
+                    if !mediaEntries.isEmpty {
+                        ForEach(mediaEntries) { entry in
+                            MediaActivityRow(entry: entry)
+                                .onTapGesture {
+                                    dismiss()
+                                    onMediaEntryTap(entry)
+                                }
+                        }
+                    }
+
+                    // Add button
+                    Button {
+                        dismiss()
+                        onAddTap()
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 20))
+                            Text("Add Activity")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.purple)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.purple.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        )
+                    }
+                    .padding(.top, 8)
+                }
+                .padding()
+            }
+            .navigationTitle(dateFormatter.string(from: date))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct DayActivityRow: View {
+    let entry: CustomEntry
+
+    private var activityIcon: String {
+        ActivityIconService.icon(for: entry.title)
+    }
+
+    private var activityColors: (primary: String, secondary: String) {
+        ActivityIconService.colors(for: entry.title)
+    }
+
+    private var timeString: String? {
+        guard let startTime = entry.startTime else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        var result = formatter.string(from: startTime)
+        if let endTime = entry.endTime {
+            result += " - \(formatter.string(from: endTime))"
+        }
+        return result
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Activity icon with gradient background
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        LinearGradient(
+                            colors: [colorFromName(activityColors.primary).opacity(0.7),
+                                    colorFromName(activityColors.secondary).opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: activityIcon)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                if let time = timeString {
+                    Text(time)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.gray)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(white: 0.12))
+        )
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "mint": return .mint
+        case "teal": return .teal
+        case "cyan": return .cyan
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "brown": return .brown
+        case "gray": return .gray
+        default: return .teal
+        }
+    }
+}
+
+struct MediaActivityRow: View {
+    let entry: MediaEntry
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Media poster or icon
+            if let imageURL = entry.imageURL, !imageURL.isEmpty {
+                AsyncImage(url: URL(string: imageURL)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    default:
+                        mediaPlaceholder
+                    }
+                }
+            } else {
+                mediaPlaceholder
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                Text(entry.mediaType.rawValue)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.gray)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(white: 0.12))
+        )
+    }
+
+    private var mediaPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(
+                    LinearGradient(
+                        colors: [.purple.opacity(0.7), .blue.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 44, height: 44)
+
+            Image(systemName: entry.mediaType.icon)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.white)
         }
     }
 }

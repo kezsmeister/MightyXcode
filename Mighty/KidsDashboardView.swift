@@ -839,8 +839,10 @@ struct MainAgendaView: View {
         }
 
         // Get all entries for our users within the date range
+        // Filter out recurrence templates - they're master records, not actual scheduled activities
         let userIds = Set(users.map { $0.id })
         let relevantEntries = customEntries.filter { entry in
+            guard !entry.isRecurrenceTemplate else { return false }
             guard let userId = entry.user?.id else { return false }
             guard userIds.contains(userId) else { return false }
             let entryDate = calendar.startOfDay(for: entry.date)

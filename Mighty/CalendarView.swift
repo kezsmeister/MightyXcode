@@ -90,31 +90,38 @@ struct CalendarView: View {
     private func entryDataFor(date: Date) -> DayCellData? {
         switch selectedTab {
         case .media(let mediaType):
-            if let entry = mediaEntries.first(where: { $0.containsDate(date) && $0.mediaType == mediaType }) {
+            let matchingEntries = mediaEntries.filter { $0.containsDate(date) && $0.mediaType == mediaType }
+            if let entry = matchingEntries.first {
+                let additionalCount = matchingEntries.count - 1
                 return DayCellData(
                     title: entry.title,
                     icon: entry.videoType?.icon ?? entry.mediaType.icon,
                     imageURL: entry.imageURL,
                     isCustom: false,
                     activityColors: nil,
-                    hasConflict: false
+                    hasConflict: false,
+                    additionalCount: additionalCount
                 )
             }
         case .custom(let sectionId):
-            if let entry = customEntries.first(where: { $0.containsDate(date) && $0.section?.id == sectionId }) {
+            // Filter out recurrence templates - they're master records, not actual scheduled activities
+            let matchingEntries = customEntries.filter { $0.containsDate(date) && $0.section?.id == sectionId && !$0.isRecurrenceTemplate }
+            if let entry = matchingEntries.first {
+                let additionalCount = matchingEntries.count - 1
                 let activityIcon = ActivityIconService.icon(for: entry.title)
                 let activityColors = ActivityIconService.colors(for: entry.title)
-                // Check if this entry has a conflict with another entry in the SAME section
+                // Check if any entry on this date has a conflict
                 let sectionEntries = customEntries.filter { $0.section?.id == sectionId }
                 let conflictingIds = ConflictDetectionService.shared.entriesWithConflicts(on: date, allEntries: sectionEntries)
-                let hasConflict = conflictingIds.contains(entry.id)
+                let hasConflict = matchingEntries.contains { conflictingIds.contains($0.id) }
                 return DayCellData(
                     title: entry.title,
                     icon: activityIcon,
                     imageURL: nil,
                     isCustom: true,
                     activityColors: activityColors,
-                    hasConflict: hasConflict
+                    hasConflict: hasConflict,
+                    additionalCount: additionalCount
                 )
             }
         }
@@ -129,6 +136,17 @@ struct DayCellData {
     let isCustom: Bool
     let activityColors: (primary: String, secondary: String)?
     let hasConflict: Bool
+    let additionalCount: Int
+
+    init(title: String, icon: String, imageURL: String?, isCustom: Bool, activityColors: (primary: String, secondary: String)?, hasConflict: Bool, additionalCount: Int = 0) {
+        self.title = title
+        self.icon = icon
+        self.imageURL = imageURL
+        self.isCustom = isCustom
+        self.activityColors = activityColors
+        self.hasConflict = hasConflict
+        self.additionalCount = additionalCount
+    }
 }
 
 struct DayCell: View {
@@ -177,6 +195,11 @@ struct DayCell: View {
                         dayNumber
                             .padding(4)
                     }
+                    .overlay(alignment: .topTrailing) {
+                        if data.additionalCount > 0 {
+                            additionalCountBadge(count: data.additionalCount)
+                        }
+                    }
                     .overlay(alignment: .bottomTrailing) {
                         if data.hasConflict {
                             conflictIndicator
@@ -211,6 +234,19 @@ struct DayCell: View {
                     .frame(width: 16, height: 16)
             )
             .padding(2)
+    }
+
+    private func additionalCountBadge(count: Int) -> some View {
+        Text("+\(count)")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                Capsule()
+                    .fill(Color.purple)
+            )
+            .padding(3)
     }
 
     private var backgroundColor: Color {
@@ -250,9 +286,16 @@ struct DayCell: View {
             VStack(spacing: 2) {
                 Image(systemName: data.icon)
                     .font(.system(size: 16, weight: .medium))
-                Text(String(data.title.prefix(8)))
-                    .font(.system(size: 8))
-                    .lineLimit(1)
+                if data.additionalCount > 0 {
+                    // Show title with +N indicator
+                    Text("\(String(data.title.prefix(5))) +\(data.additionalCount)")
+                        .font(.system(size: 8, weight: .semibold))
+                        .lineLimit(1)
+                } else {
+                    Text(String(data.title.prefix(8)))
+                        .font(.system(size: 8))
+                        .lineLimit(1)
+                }
             }
             .foregroundColor(.white)
         }

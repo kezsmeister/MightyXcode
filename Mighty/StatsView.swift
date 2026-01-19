@@ -14,7 +14,8 @@ struct StatsView: View {
     }
 
     private var userCustomEntries: [CustomEntry] {
-        customEntries.filter { $0.user?.id == user.id }
+        // Filter out recurrence templates - they're master records, not actual activities
+        customEntries.filter { $0.user?.id == user.id && !$0.isRecurrenceTemplate }
     }
 
     private var movieEntries: [MediaEntry] {

@@ -196,7 +196,7 @@ struct RootView: View {
         guard let twoWeeksOut = calendar.date(byAdding: .weekOfYear, value: 2, to: today) else { return }
 
         let upcomingEntries = customEntries.filter {
-            $0.date >= today && $0.date <= twoWeeksOut && $0.notifyBefore && $0.startTime != nil
+            !$0.isRecurrenceTemplate && $0.date >= today && $0.date <= twoWeeksOut && $0.notifyBefore && $0.startTime != nil
         }
 
         NotificationManager.shared.scheduleNotifications(for: upcomingEntries)
