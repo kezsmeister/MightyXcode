@@ -7,6 +7,11 @@ private let syncLogger = Logger(subsystem: "com.mighty.app", category: "Sync")
 
 @main
 struct MightyApp: App {
+    @State private var pendingInviteToken: String?
+    @State private var showingInviteAlert = false
+    @State private var inviteAlertMessage = ""
+    @State private var inviteAlertIsError = false
+
     init() {
         // Setup notification delegate
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
@@ -37,8 +42,69 @@ struct MightyApp: App {
         WindowGroup {
             AuthGateView()
                 .preferredColorScheme(.dark)
+                .onOpenURL { url in
+                    handleIncomingURL(url)
+                }
+                .alert(inviteAlertIsError ? "Invitation Error" : "Invitation Accepted", isPresented: $showingInviteAlert) {
+                    Button("OK") {}
+                } message: {
+                    Text(inviteAlertMessage)
+                }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        syncLogger.info("Received URL: \(url.absoluteString)")
+
+        // Handle mighty://invite/{token} or https://mighty-app.com/invite/{token}
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            syncLogger.error("Failed to parse URL components")
+            return
+        }
+
+        let pathComponents = components.path.split(separator: "/").map(String.init)
+
+        // Check for invite path
+        if let inviteIndex = pathComponents.firstIndex(of: "invite"),
+           inviteIndex + 1 < pathComponents.count {
+            let token = pathComponents[inviteIndex + 1]
+            handleInviteToken(token)
+        }
+    }
+
+    private func handleInviteToken(_ token: String) {
+        syncLogger.info("Processing invite token")
+
+        // Check if user is authenticated
+        guard AuthState.shared.isAuthenticated else {
+            // Store token to process after login
+            pendingInviteToken = token
+            inviteAlertMessage = "Please sign in to accept this invitation."
+            inviteAlertIsError = true
+            showingInviteAlert = true
+            return
+        }
+
+        // Accept the invitation
+        Task {
+            do {
+                _ = try await FamilySharingService.shared.acceptInvitation(token: token)
+                await MainActor.run {
+                    inviteAlertMessage = "You've been added to the family! You can now view their activities."
+                    inviteAlertIsError = false
+                    showingInviteAlert = true
+                    syncLogger.info("Successfully accepted invitation")
+                }
+            } catch {
+                await MainActor.run {
+                    inviteAlertMessage = error.localizedDescription
+                    inviteAlertIsError = true
+                    showingInviteAlert = true
+                    syncLogger.error("Failed to accept invitation: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }
 

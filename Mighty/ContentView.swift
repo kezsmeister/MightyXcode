@@ -151,7 +151,8 @@ struct ContentView: View {
                 .padding()
             }
 
-            if !orderedTabs.isEmpty {
+            // Only show FAB if user can edit (not a viewer)
+            if !orderedTabs.isEmpty && AuthState.shared.canEdit {
                 floatingActionButton
             }
         }
@@ -324,6 +325,19 @@ struct ContentView: View {
                         .foregroundColor(.white)
                         .frame(width: 32, height: 32)
                 }
+
+                // Viewer badge when viewing shared family
+                if AuthState.shared.isViewingSharedFamily && !AuthState.shared.canEdit {
+                    Text("Viewing")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange)
+                        .cornerRadius(8)
+                        .padding(.leading, 8)
+                }
             }
 
             Spacer()
@@ -443,36 +457,41 @@ struct ContentView: View {
                         }
                     }
                     .contextMenu {
-                        Button {
-                            showingReorderSheet = true
-                        } label: {
-                            Label("Reorder Sections", systemImage: "arrow.up.arrow.down")
-                        }
-
-                        if case .custom(let sectionId) = tabItem.tab,
-                           let section = userCustomSections.first(where: { $0.id == sectionId }) {
-                            Button(role: .destructive) {
-                                deleteSection(section)
+                        // Only show reorder/delete options if user can edit
+                        if AuthState.shared.canEdit {
+                            Button {
+                                showingReorderSheet = true
                             } label: {
-                                Label("Delete Section", systemImage: "trash")
+                                Label("Reorder Sections", systemImage: "arrow.up.arrow.down")
+                            }
+
+                            if case .custom(let sectionId) = tabItem.tab,
+                               let section = userCustomSections.first(where: { $0.id == sectionId }) {
+                                Button(role: .destructive) {
+                                    deleteSection(section)
+                                } label: {
+                                    Label("Delete Section", systemImage: "trash")
+                                }
                             }
                         }
                     }
                 }
 
-                // Add section button
-                AddSectionButton {
-                    showingAddSectionSheet = true
-                }
+                // Add section button - only show if user can edit
+                if AuthState.shared.canEdit {
+                    AddSectionButton {
+                        showingAddSectionSheet = true
+                    }
 
-                // Reorder button (only show if there are tabs to reorder)
-                if orderedTabs.count > 1 {
-                    Button {
-                        showingReorderSheet = true
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 14))
-                            .foregroundColor(.gray.opacity(0.6))
+                    // Reorder button (only show if there are tabs to reorder)
+                    if orderedTabs.count > 1 {
+                        Button {
+                            showingReorderSheet = true
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray.opacity(0.6))
+                        }
                     }
                 }
             }
@@ -569,8 +588,8 @@ struct ContentView: View {
                 selectedEntry = existingEntry
                 selectedCustomEntry = nil
                 showingDetailSheet = true
-            } else {
-                // No activities - show add sheet
+            } else if AuthState.shared.canEdit {
+                // No activities - show add sheet (only if user can edit)
                 prefilledActivityName = nil
                 showingAddSheet = true
             }
@@ -587,8 +606,8 @@ struct ContentView: View {
                 selectedCustomEntry = existingEntry
                 selectedEntry = nil
                 showingDetailSheet = true
-            } else {
-                // No activities - show add sheet
+            } else if AuthState.shared.canEdit {
+                // No activities - show add sheet (only if user can edit)
                 prefilledActivityName = nil
                 showingAddSheet = true
             }
@@ -611,27 +630,35 @@ struct ContentView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
 
-                Text("Create your first section to start tracking activities")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
+                if AuthState.shared.canEdit {
+                    Text("Create your first section to start tracking activities")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
 
-                Button {
-                    showingAddSectionSheet = true
-                } label: {
-                    HStack {
-                        Image(systemName: "plus")
-                        Text("Create Section")
+                    Button {
+                        showingAddSectionSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus")
+                            Text("Create Section")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.purple)
+                        .cornerRadius(12)
                     }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.purple)
-                    .cornerRadius(12)
+                    .padding(.top, 8)
+                } else {
+                    Text("No activities have been added to this family yet")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
                 }
-                .padding(.top, 8)
             }
 
             Spacer()
@@ -649,12 +676,15 @@ struct ContentView: View {
 
                 Spacer()
 
-                Button {
-                    showingEditActivities = true
-                } label: {
-                    Text("Edit")
-                        .font(.subheadline)
-                        .foregroundColor(.purple)
+                // Only show Edit button if user can edit
+                if AuthState.shared.canEdit {
+                    Button {
+                        showingEditActivities = true
+                    } label: {
+                        Text("Edit")
+                            .font(.subheadline)
+                            .foregroundColor(.purple)
+                    }
                 }
             }
 
@@ -676,9 +706,16 @@ struct ContentView: View {
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(section.suggestedActivities, id: \.self) { activity in
-                            SuggestedActivityRow(activity: activity) {
-                                prefilledActivityName = activity
-                                showingAddSheet = true
+                            if AuthState.shared.canEdit {
+                                SuggestedActivityRow(activity: activity) {
+                                    prefilledActivityName = activity
+                                    showingAddSheet = true
+                                }
+                            } else {
+                                // Read-only view for viewers
+                                SuggestedActivityRow(activity: activity) { }
+                                    .allowsHitTesting(false)
+                                    .opacity(0.7)
                             }
                         }
                     }
@@ -1079,27 +1116,29 @@ struct DayActivitiesSheet: View {
                         }
                     }
 
-                    // Add button
-                    Button {
-                        dismiss()
-                        onAddTap()
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 20))
-                            Text("Add Activity")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
+                    // Add button - only show if user can edit
+                    if AuthState.shared.canEdit {
+                        Button {
+                            dismiss()
+                            onAddTap()
+                        } label: {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 20))
+                                Text("Add Activity")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.purple)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.purple.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                            )
                         }
-                        .foregroundColor(.purple)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.purple.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                        )
+                        .padding(.top, 8)
                     }
-                    .padding(.top, 8)
                 }
                 .padding()
             }

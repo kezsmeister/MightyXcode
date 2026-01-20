@@ -93,6 +93,7 @@ struct CalendarView: View {
             let matchingEntries = mediaEntries.filter { $0.containsDate(date) && $0.mediaType == mediaType }
             if let entry = matchingEntries.first {
                 let additionalCount = matchingEntries.count - 1
+                let additionalIcons = matchingEntries.dropFirst().prefix(2).map { $0.videoType?.icon ?? $0.mediaType.icon }
                 return DayCellData(
                     title: entry.title,
                     icon: entry.videoType?.icon ?? entry.mediaType.icon,
@@ -100,7 +101,8 @@ struct CalendarView: View {
                     isCustom: false,
                     activityColors: nil,
                     hasConflict: false,
-                    additionalCount: additionalCount
+                    additionalCount: additionalCount,
+                    additionalIcons: Array(additionalIcons)
                 )
             }
         case .custom(let sectionId):
@@ -110,6 +112,8 @@ struct CalendarView: View {
                 let additionalCount = matchingEntries.count - 1
                 let activityIcon = ActivityIconService.icon(for: entry.title)
                 let activityColors = ActivityIconService.colors(for: entry.title)
+                // Collect icons from additional activities (up to 2 more)
+                let additionalIcons = matchingEntries.dropFirst().prefix(2).map { ActivityIconService.icon(for: $0.title) }
                 // Check if any entry on this date has a conflict
                 let sectionEntries = customEntries.filter { $0.section?.id == sectionId }
                 let conflictingIds = ConflictDetectionService.shared.entriesWithConflicts(on: date, allEntries: sectionEntries)
@@ -121,7 +125,8 @@ struct CalendarView: View {
                     isCustom: true,
                     activityColors: activityColors,
                     hasConflict: hasConflict,
-                    additionalCount: additionalCount
+                    additionalCount: additionalCount,
+                    additionalIcons: Array(additionalIcons)
                 )
             }
         }
@@ -137,8 +142,10 @@ struct DayCellData {
     let activityColors: (primary: String, secondary: String)?
     let hasConflict: Bool
     let additionalCount: Int
+    let additionalIcons: [String]
+    let participantEmojis: [String]
 
-    init(title: String, icon: String, imageURL: String?, isCustom: Bool, activityColors: (primary: String, secondary: String)?, hasConflict: Bool, additionalCount: Int = 0) {
+    init(title: String, icon: String, imageURL: String?, isCustom: Bool, activityColors: (primary: String, secondary: String)?, hasConflict: Bool, additionalCount: Int = 0, additionalIcons: [String] = [], participantEmojis: [String] = []) {
         self.title = title
         self.icon = icon
         self.imageURL = imageURL
@@ -146,6 +153,8 @@ struct DayCellData {
         self.activityColors = activityColors
         self.hasConflict = hasConflict
         self.additionalCount = additionalCount
+        self.additionalIcons = additionalIcons
+        self.participantEmojis = participantEmojis
     }
 }
 
@@ -284,18 +293,18 @@ struct DayCell: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             VStack(spacing: 2) {
-                Image(systemName: data.icon)
-                    .font(.system(size: 16, weight: .medium))
-                if data.additionalCount > 0 {
-                    // Show title with +N indicator
-                    Text("\(String(data.title.prefix(5))) +\(data.additionalCount)")
-                        .font(.system(size: 8, weight: .semibold))
-                        .lineLimit(1)
-                } else {
-                    Text(String(data.title.prefix(8)))
-                        .font(.system(size: 8))
-                        .lineLimit(1)
+                // Icon with +N badge next to it
+                HStack(spacing: 2) {
+                    Image(systemName: data.icon)
+                        .font(.system(size: 12, weight: .medium))
+                    if data.additionalCount > 0 {
+                        Text("+\(data.additionalCount)")
+                            .font(.system(size: 10, weight: .bold))
+                    }
                 }
+                Text(String(data.title.prefix(8)))
+                    .font(.system(size: 8))
+                    .lineLimit(1)
             }
             .foregroundColor(.white)
         }
