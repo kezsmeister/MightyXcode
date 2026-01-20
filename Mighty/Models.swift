@@ -339,3 +339,104 @@ extension Date {
                calendar.component(.year, from: self) == calendar.component(.year, from: other)
     }
 }
+
+// MARK: - Family Sharing Models
+
+enum FamilyRole: String, Codable, CaseIterable {
+    case admin = "admin"
+    case viewer = "viewer"
+
+    var displayName: String {
+        switch self {
+        case .admin: return "Admin"
+        case .viewer: return "Viewer"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .admin: return "Can view and edit all data"
+        case .viewer: return "Can view all data (read-only)"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .admin: return "person.badge.key"
+        case .viewer: return "eye"
+        }
+    }
+}
+
+struct Family: Codable, Identifiable {
+    let id: String
+    let ownerId: String
+    let name: String?
+    let createdAt: String
+    let updatedAt: String?
+}
+
+struct FamilyMember: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let email: String
+    let role: String
+    let joinedAt: String
+    let isOwner: Bool?
+
+    var familyRole: FamilyRole {
+        FamilyRole(rawValue: role) ?? .viewer
+    }
+}
+
+struct FamilyInvitation: Codable, Identifiable {
+    let id: String
+    let email: String
+    let role: String
+    let status: String
+    let expiresAt: String
+    let createdAt: String
+
+    var familyRole: FamilyRole {
+        FamilyRole(rawValue: role) ?? .viewer
+    }
+
+    var invitationStatus: InvitationStatus {
+        InvitationStatus(rawValue: status) ?? .pending
+    }
+
+    var isExpired: Bool {
+        guard let date = ISO8601DateFormatter().date(from: expiresAt) else { return false }
+        return date < Date()
+    }
+
+    enum InvitationStatus: String, Codable {
+        case pending = "pending"
+        case accepted = "accepted"
+        case expired = "expired"
+        case revoked = "revoked"
+    }
+}
+
+struct FamilyMembersResponse: Codable {
+    let members: [FamilyMember]
+    let isOwner: Bool
+    let familyId: String?
+}
+
+struct FamilyInvitationsResponse: Codable {
+    let invitations: [FamilyInvitation]
+}
+
+struct FamilyInviteResponse: Codable {
+    let success: Bool
+    let invitationId: String?
+    let emailSent: Bool?
+    let shareLink: String?
+}
+
+struct AcceptInviteResponse: Codable {
+    let success: Bool
+    let familyId: String?
+    let role: String?
+}

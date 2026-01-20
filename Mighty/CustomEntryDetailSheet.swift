@@ -383,28 +383,31 @@ struct CustomEntryDetailSheet: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 16) {
-                        Button {
-                            // Show different dialog for recurring entries
-                            if entry.recurrenceGroupId != nil {
-                                showRecurringDeleteConfirmation = true
-                            } else {
-                                showDeleteConfirmation = true
+                    // Only show edit/delete buttons if user can edit
+                    if AuthState.shared.canEdit {
+                        HStack(spacing: 16) {
+                            Button {
+                                // Show different dialog for recurring entries
+                                if entry.recurrenceGroupId != nil {
+                                    showRecurringDeleteConfirmation = true
+                                } else {
+                                    showDeleteConfirmation = true
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
                             }
-                        } label: {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
 
-                        Button(isEditing ? "Save" : "Edit") {
-                            if isEditing {
-                                saveChanges()
-                                isEditing = false
-                            } else {
-                                isEditing = true
+                            Button(isEditing ? "Save" : "Edit") {
+                                if isEditing {
+                                    saveChanges()
+                                    isEditing = false
+                                } else {
+                                    isEditing = true
+                                }
                             }
+                            .disabled(isEditing && title.isEmpty)
                         }
-                        .disabled(isEditing && title.isEmpty)
                     }
                 }
             }

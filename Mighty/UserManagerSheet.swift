@@ -31,6 +31,7 @@ struct UserManagerSheet: View {
                         UserRow(
                             user: user,
                             isSelected: selectedUser?.id == user.id,
+                            canEdit: AuthState.shared.canEdit,
                             onSelect: {
                                 selectedUser = user
                                 dismiss()
@@ -47,12 +48,19 @@ struct UserManagerSheet: View {
                 } header: {
                     Text("Users")
                 } footer: {
-                    Text("Tap to switch user. Swipe for options.")
+                    if AuthState.shared.canEdit {
+                        Text("Tap to switch user. Swipe for options.")
+                    } else {
+                        Text("Tap to switch user.")
+                    }
                 }
 
-                Section {
-                    Button(action: { showingAddUser = true }) {
-                        Label("Add New User", systemImage: "person.badge.plus")
+                // Only show Add button if user can edit
+                if AuthState.shared.canEdit {
+                    Section {
+                        Button(action: { showingAddUser = true }) {
+                            Label("Add New User", systemImage: "person.badge.plus")
+                        }
                     }
                 }
             }
@@ -112,6 +120,7 @@ struct UserManagerSheet: View {
 struct UserRow: View {
     let user: User
     let isSelected: Bool
+    let canEdit: Bool
     let onSelect: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -153,16 +162,22 @@ struct UserRow: View {
             }
             .buttonStyle(.plain)
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.gray)
+            // Only show edit button if user can edit
+            if canEdit {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.gray)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
+            // Only show delete swipe action if user can edit
+            if canEdit {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
     }

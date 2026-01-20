@@ -11,10 +11,12 @@ struct SettingsView: View {
     @State private var showingDeleteAlert = false
     @State private var showingTemplateManager = false
     @State private var showingLoginSheet = false
+    @State private var showingFamilySharing = false
     @State private var authState = AuthState.shared
     @State private var syncManager = SyncManager.shared
     @State private var isSigningOut = false
     @State private var signOutError: String?
+    @State private var familyMemberCount = 0
 
     var body: some View {
         NavigationStack {
@@ -89,6 +91,32 @@ struct SettingsView: View {
                         .foregroundColor(.purple)
 
                         Text("Sign in to sync profiles across devices")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
+
+                // Family Sharing Section - only show when authenticated
+                if authState.isAuthenticated {
+                    Section("Family Sharing") {
+                        Button {
+                            showingFamilySharing = true
+                        } label: {
+                            HStack {
+                                Label("Manage Family", systemImage: "person.2")
+                                Spacer()
+                                if familyMemberCount > 1 {
+                                    Text("\(familyMemberCount) members")
+                                        .foregroundColor(.gray)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .foregroundColor(.white)
+
+                        Text("Invite partners, co-parents, or caregivers to view your activities")
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
@@ -185,8 +213,26 @@ struct SettingsView: View {
             .sheet(isPresented: $showingLoginSheet) {
                 LoginView()
             }
+            .sheet(isPresented: $showingFamilySharing) {
+                FamilySharingView()
+            }
         }
         .preferredColorScheme(.dark)
+        .task {
+            await loadFamilyMemberCount()
+        }
+    }
+
+    private func loadFamilyMemberCount() async {
+        guard authState.isAuthenticated else { return }
+        do {
+            let response = try await FamilySharingService.shared.getMembers()
+            await MainActor.run {
+                familyMemberCount = response.members.count
+            }
+        } catch {
+            // Silently fail - count will just show 0
+        }
     }
 
     @ViewBuilder
