@@ -104,15 +104,14 @@ struct UserManagerSheet: View {
         // Capture ID before deleting
         let userId = user.id
 
-        // Mark as deleted to prevent sync from restoring it
-        DeletionTracker.shared.markProfileDeleted(userId)
-
         // Delete locally
         modelContext.delete(user)
 
-        // Delete from cloud in background
+        // Mark as deleted and sync to cloud in background
         Task {
+            await DeletionTracker.shared.markProfileDeleted(userId)
             try? await ProfileSyncService.shared.deleteProfileFromCloud(userId: userId)
+            await DeletionTracker.shared.clearProfileDeletion(userId)
         }
     }
 }

@@ -29,7 +29,7 @@ actor ProfileSyncService {
                 "tabOrder": user.tabOrder,
                 "enabledTemplates": user.enabledTemplates,
                 "hasCompletedOnboarding": user.hasCompletedOnboarding,
-                "updatedAt": ISO8601DateFormatter().string(from: Date())
+                "updatedAt": DateFormatters.iso8601String(from: Date())
             ]
 
             // Update profile data
@@ -81,7 +81,7 @@ actor ProfileSyncService {
 
     /// Merge cloud profiles with local profiles, creating any that don't exist locally
     @MainActor
-    func mergeCloudProfiles(_ cloudProfiles: [CloudKidProfile], into context: ModelContext) throws {
+    func mergeCloudProfiles(_ cloudProfiles: [CloudKidProfile], into context: ModelContext) async throws {
         // Fetch existing local users
         let descriptor = FetchDescriptor<User>()
         let localUsers = try context.fetch(descriptor)
@@ -89,14 +89,14 @@ actor ProfileSyncService {
         for cloudProfile in cloudProfiles {
             // Skip profiles that were recently deleted locally
             if let profileUUID = UUID(uuidString: cloudProfile.localId),
-               DeletionTracker.shared.isProfileDeleted(profileUUID) {
+               await DeletionTracker.shared.isProfileDeleted(profileUUID) {
                 continue
             }
 
             // Check if profile already exists locally by localId
             if let existingUser = localUsers.first(where: { $0.id.uuidString == cloudProfile.localId }) {
                 // Update existing user if cloud is newer than local updatedAt
-                if let cloudDate = ISO8601DateFormatter().date(from: cloudProfile.updatedAt),
+                if let cloudDate = DateFormatters.date(fromISO8601: cloudProfile.updatedAt),
                    cloudDate > existingUser.updatedAt {
                     existingUser.name = cloudProfile.name
                     existingUser.emoji = cloudProfile.emoji
@@ -120,7 +120,7 @@ actor ProfileSyncService {
                 newUser.tabOrder = cloudProfile.tabOrder
                 newUser.enabledTemplates = cloudProfile.enabledTemplates
                 newUser.hasCompletedOnboarding = cloudProfile.hasCompletedOnboarding
-                if let cloudDate = ISO8601DateFormatter().date(from: cloudProfile.updatedAt) {
+                if let cloudDate = DateFormatters.date(fromISO8601: cloudProfile.updatedAt) {
                     newUser.updatedAt = cloudDate
                 }
                 context.insert(newUser)
@@ -143,7 +143,7 @@ actor ProfileSyncService {
         let cloudProfiles = try await fetchProfilesFromCloud()
 
         // 2. Merge cloud → local
-        try mergeCloudProfiles(cloudProfiles, into: context)
+        try await mergeCloudProfiles(cloudProfiles, into: context)
 
         // 3. Fetch updated local users
         let descriptor = FetchDescriptor<User>()

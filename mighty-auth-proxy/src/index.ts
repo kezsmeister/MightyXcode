@@ -29,17 +29,39 @@ interface UserInfo {
 const INSTANTDB_BASE_URL = "https://api.instantdb.com";
 
 // CORS headers for iOS app
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+// Restricted to specific origins for security
+// iOS native apps don't require CORS, but this protects against web-based attacks
+function getCorsHeaders(request: Request | null = null): Record<string, string> {
+  const origin = request?.headers?.get('Origin') || '';
+
+  // Allow specific origins only
+  const allowedOrigins = [
+    'https://mighty-app.com',
+    'https://www.mighty-app.com',
+    // Allow localhost for development
+    'http://localhost:3000',
+    'http://localhost:8080',
+  ];
+
+  // For iOS native requests, Origin header is typically not sent
+  // We allow requests without Origin (native apps) but restrict web origins
+  const allowOrigin = origin === '' || allowedOrigins.includes(origin)
+    ? (origin || 'https://mighty-app.com')
+    : 'https://mighty-app.com';
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400", // Cache preflight for 24 hours
+  };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: getCorsHeaders(request) });
     }
 
     const url = new URL(request.url);
@@ -82,7 +104,7 @@ export default {
 
       return new Response(JSON.stringify({ error: "Not found" }), {
         status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     } catch (error) {
       console.error("Error:", error);
@@ -90,7 +112,7 @@ export default {
         JSON.stringify({ error: "Internal server error" }),
         {
           status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
         }
       );
     }
@@ -107,7 +129,7 @@ async function handleSendCode(request: Request, env: Env): Promise<Response> {
   if (!body.email) {
     return new Response(JSON.stringify({ error: "Email is required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -133,14 +155,14 @@ async function handleSendCode(request: Request, env: Env): Promise<Response> {
       JSON.stringify({ error: "Failed to send magic code", details: errorText, status: instantDBResponse.status }),
       {
         status: instantDBResponse.status,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       }
     );
   }
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
   });
 }
 
@@ -156,7 +178,7 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
       JSON.stringify({ error: "Email and code are required" }),
       {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       }
     );
   }
@@ -182,7 +204,7 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
     console.error("InstantDB verify error:", errorText);
     return new Response(JSON.stringify({ error: "Invalid code" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -190,7 +212,7 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
 
   return new Response(JSON.stringify(data), {
     status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
   });
 }
 
@@ -323,7 +345,7 @@ async function handleFamilyInvite(request: Request, env: Env): Promise<Response>
   if (!body.refresh_token || !body.email) {
     return new Response(JSON.stringify({ error: "refresh_token and email are required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -332,7 +354,7 @@ async function handleFamilyInvite(request: Request, env: Env): Promise<Response>
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -343,7 +365,7 @@ async function handleFamilyInvite(request: Request, env: Env): Promise<Response>
   if (inviteeEmail === user.email.toLowerCase()) {
     return new Response(JSON.stringify({ error: "You cannot invite yourself" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -382,7 +404,7 @@ async function handleFamilyInvite(request: Request, env: Env): Promise<Response>
     if (membersQuery.familyMembers && membersQuery.familyMembers.length > 0) {
       return new Response(JSON.stringify({ error: "This person is already a family member" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -424,13 +446,13 @@ async function handleFamilyInvite(request: Request, env: Env): Promise<Response>
       shareLink: `mightyapp://invite/${token}`
     }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Family invite error:", error);
     return new Response(JSON.stringify({ error: "Failed to create invitation" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }
@@ -445,7 +467,7 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
   if (!body.refresh_token || !body.token) {
     return new Response(JSON.stringify({ error: "refresh_token and invitation token are required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -454,7 +476,7 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -469,7 +491,7 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
     if (!inviteQuery.familyInvitations || inviteQuery.familyInvitations.length === 0) {
       return new Response(JSON.stringify({ error: "Invitation not found" }), {
         status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -479,7 +501,7 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
     if (invitation.status !== "pending") {
       return new Response(JSON.stringify({ error: "This invitation has already been used or revoked" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -490,7 +512,7 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
       ], env);
       return new Response(JSON.stringify({ error: "This invitation has expired" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -522,13 +544,13 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
       role: invitation.role || "viewer"
     }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Accept invite error:", error);
     return new Response(JSON.stringify({ error: "Failed to accept invitation" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }
@@ -543,7 +565,7 @@ async function handleGetMembers(request: Request, env: Env): Promise<Response> {
   if (!body.refresh_token) {
     return new Response(JSON.stringify({ error: "refresh_token is required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -551,7 +573,7 @@ async function handleGetMembers(request: Request, env: Env): Promise<Response> {
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -571,7 +593,7 @@ async function handleGetMembers(request: Request, env: Env): Promise<Response> {
         familyId: null
       }), {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -597,13 +619,13 @@ async function handleGetMembers(request: Request, env: Env): Promise<Response> {
       familyId: family.id
     }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Get members error:", error);
     return new Response(JSON.stringify({ error: "Failed to get family members" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }
@@ -618,7 +640,7 @@ async function handleGetInvitations(request: Request, env: Env): Promise<Respons
   if (!body.refresh_token) {
     return new Response(JSON.stringify({ error: "refresh_token is required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -626,7 +648,7 @@ async function handleGetInvitations(request: Request, env: Env): Promise<Respons
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -644,7 +666,7 @@ async function handleGetInvitations(request: Request, env: Env): Promise<Respons
     if (!familyQuery.families || familyQuery.families.length === 0) {
       return new Response(JSON.stringify({ invitations: [] }), {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -652,13 +674,13 @@ async function handleGetInvitations(request: Request, env: Env): Promise<Respons
 
     return new Response(JSON.stringify({ invitations }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Get invitations error:", error);
     return new Response(JSON.stringify({ error: "Failed to get invitations" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }
@@ -673,7 +695,7 @@ async function handleRevokeInvite(request: Request, env: Env): Promise<Response>
   if (!body.refresh_token || !body.invitationId) {
     return new Response(JSON.stringify({ error: "refresh_token and invitationId are required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -681,7 +703,7 @@ async function handleRevokeInvite(request: Request, env: Env): Promise<Response>
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -696,7 +718,7 @@ async function handleRevokeInvite(request: Request, env: Env): Promise<Response>
     if (!familyQuery.families || familyQuery.families.length === 0) {
       return new Response(JSON.stringify({ error: "You don't have a family to manage" }), {
         status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -707,13 +729,13 @@ async function handleRevokeInvite(request: Request, env: Env): Promise<Response>
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Revoke invite error:", error);
     return new Response(JSON.stringify({ error: "Failed to revoke invitation" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }
@@ -728,7 +750,7 @@ async function handleRemoveMember(request: Request, env: Env): Promise<Response>
   if (!body.refresh_token || !body.memberId) {
     return new Response(JSON.stringify({ error: "refresh_token and memberId are required" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -736,7 +758,7 @@ async function handleRemoveMember(request: Request, env: Env): Promise<Response>
   if (!user) {
     return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 
@@ -751,7 +773,7 @@ async function handleRemoveMember(request: Request, env: Env): Promise<Response>
     if (!familyQuery.families || familyQuery.families.length === 0) {
       return new Response(JSON.stringify({ error: "You don't have a family to manage" }), {
         status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
       });
     }
 
@@ -762,13 +784,13 @@ async function handleRemoveMember(request: Request, env: Env): Promise<Response>
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Remove member error:", error);
     return new Response(JSON.stringify({ error: "Failed to remove member" }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(), "Content-Type": "application/json" },
     });
   }
 }

@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let authLogger = Logger(subsystem: "com.mighty.app", category: "Auth")
 
 actor AuthenticationService {
     static let shared = AuthenticationService()
@@ -30,7 +33,7 @@ actor AuthenticationService {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? "nil"
-            print("[Auth] Send magic code failed: \(responseBody)")
+            authLogger.error("Send magic code failed: \(responseBody)")
             throw AuthError.sendCodeFailed
         }
     }
@@ -95,7 +98,7 @@ actor AuthenticationService {
                 try await logout()
             }
         } catch {
-            print("Auth check error: \(error)")
+            authLogger.error("Auth check error: \(error.localizedDescription)")
             await AuthState.shared.setUnauthenticated()
         }
     }
@@ -116,18 +119,18 @@ actor AuthenticationService {
             let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("[Auth] Token verification failed: Invalid response type")
+                authLogger.warning("Token verification failed: Invalid response type")
                 return false
             }
 
             let isValid = (200...299).contains(httpResponse.statusCode)
             if !isValid {
                 let responseBody = String(data: data, encoding: .utf8) ?? "nil"
-                print("[Auth] Token verification failed: HTTP \(httpResponse.statusCode) - \(responseBody)")
+                authLogger.warning("Token verification failed: HTTP \(httpResponse.statusCode) - \(responseBody)")
             }
             return isValid
         } catch {
-            print("[Auth] Token verification network error: \(error.localizedDescription)")
+            authLogger.error("Token verification network error: \(error.localizedDescription)")
             throw error
         }
     }

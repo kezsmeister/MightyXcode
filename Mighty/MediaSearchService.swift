@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let searchLogger = Logger(subsystem: "com.mighty.app", category: "MediaSearch")
 
 struct SearchResult: Identifiable {
     let id = UUID()
@@ -33,7 +36,7 @@ actor MediaSearchService {
                 )
             }
         } catch {
-            print("Movie search error: \(error)")
+            searchLogger.error("Movie search error: \(error.localizedDescription)")
             return []
         }
     }
@@ -59,7 +62,7 @@ actor MediaSearchService {
                 )
             }
         } catch {
-            print("TV show search error: \(error)")
+            searchLogger.error("TV show search error: \(error.localizedDescription)")
             return []
         }
     }
@@ -87,7 +90,7 @@ actor MediaSearchService {
                 )
             }
         } catch {
-            print("Book search error: \(error)")
+            searchLogger.error("Book search error: \(error.localizedDescription)")
             return []
         }
     }

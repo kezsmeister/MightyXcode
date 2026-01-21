@@ -514,15 +514,14 @@ struct ContentView: View {
         // Capture ID before deleting
         let sectionId = section.id
 
-        // Mark as deleted to prevent sync from restoring it
-        DeletionTracker.shared.markSectionDeleted(sectionId)
-
         // Delete locally
         modelContext.delete(section)
 
-        // Delete from cloud in background
+        // Mark as deleted and sync to cloud in background
         Task {
+            await DeletionTracker.shared.markSectionDeleted(sectionId)
             try? await EntrySyncService.shared.deleteSectionFromCloud(sectionId: sectionId)
+            await DeletionTracker.shared.clearSectionDeletion(sectionId)
         }
     }
 
@@ -1024,8 +1023,8 @@ struct SuggestedActivityRow: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(
                             LinearGradient(
-                                colors: [colorFromName(activityColors.primary).opacity(0.7),
-                                        colorFromName(activityColors.secondary).opacity(0.7)],
+                                colors: [Color.fromName(activityColors.primary).opacity(0.7),
+                                        Color.fromName(activityColors.secondary).opacity(0.7)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -1051,25 +1050,6 @@ struct SuggestedActivityRow: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private func colorFromName(_ name: String) -> Color {
-        switch name {
-        case "red": return .red
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "green": return .green
-        case "mint": return .mint
-        case "teal": return .teal
-        case "cyan": return .cyan
-        case "blue": return .blue
-        case "indigo": return .indigo
-        case "purple": return .purple
-        case "pink": return .pink
-        case "brown": return .brown
-        case "gray": return .gray
-        default: return .teal
-        }
     }
 }
 
@@ -1186,8 +1166,8 @@ struct DayActivityRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(
                         LinearGradient(
-                            colors: [colorFromName(activityColors.primary).opacity(0.7),
-                                    colorFromName(activityColors.secondary).opacity(0.7)],
+                            colors: [Color.fromName(activityColors.primary).opacity(0.7),
+                                    Color.fromName(activityColors.secondary).opacity(0.7)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -1222,25 +1202,6 @@ struct DayActivityRow: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(white: 0.12))
         )
-    }
-
-    private func colorFromName(_ name: String) -> Color {
-        switch name {
-        case "red": return .red
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "green": return .green
-        case "mint": return .mint
-        case "teal": return .teal
-        case "cyan": return .cyan
-        case "blue": return .blue
-        case "indigo": return .indigo
-        case "purple": return .purple
-        case "pink": return .pink
-        case "brown": return .brown
-        case "gray": return .gray
-        default: return .teal
-        }
     }
 }
 

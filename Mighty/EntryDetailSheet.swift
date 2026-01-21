@@ -413,15 +413,14 @@ struct EntryDetailSheet: View {
         // Capture ID before deleting
         let entryId = entry.id
 
-        // Mark as deleted to prevent sync from restoring it
-        DeletionTracker.shared.markMediaEntryDeleted(entryId)
-
         // Delete locally
         modelContext.delete(entry)
 
-        // Delete from cloud in background
+        // Mark as deleted and sync to cloud in background
         Task {
+            await DeletionTracker.shared.markMediaEntryDeleted(entryId)
             try? await EntrySyncService.shared.deleteMediaEntryFromCloud(entryId: entryId)
+            await DeletionTracker.shared.clearMediaEntryDeletion(entryId)
         }
 
         dismiss()

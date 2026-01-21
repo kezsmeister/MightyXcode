@@ -1,5 +1,8 @@
 import Foundation
 import UserNotifications
+import os.log
+
+private let notificationLogger = Logger(subsystem: "com.mighty.app", category: "Notifications")
 
 class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
@@ -14,7 +17,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    print("Notification permission error: \(error)")
+                    notificationLogger.error("Notification permission error: \(error.localizedDescription)")
                     completion(false)
                     return
                 }
@@ -80,7 +83,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("Error scheduling notification: \(error)")
+                notificationLogger.error("Error scheduling notification: \(error.localizedDescription)")
             }
         }
     }

@@ -649,15 +649,14 @@ struct CustomEntryDetailSheet: View {
         // Capture ID before deleting
         let entryId = entry.id
 
-        // Mark as deleted to prevent sync from restoring it
-        DeletionTracker.shared.markCustomEntryDeleted(entryId)
-
         // Delete locally
         modelContext.delete(entry)
 
-        // Delete from cloud in background
+        // Mark as deleted and sync to cloud in background
         Task {
+            await DeletionTracker.shared.markCustomEntryDeleted(entryId)
             try? await EntrySyncService.shared.deleteCustomEntryFromCloud(entryId: entryId)
+            await DeletionTracker.shared.clearCustomEntryDeletion(entryId)
         }
 
         dismiss()
@@ -696,22 +695,23 @@ struct CustomEntryDetailSheet: View {
             return entryStartTime == nil && otherEntry.startTime == nil
         }
 
-        // Delete all matching entries
+        // Collect IDs and delete locally
+        var entryIds: [UUID] = []
         for recurringEntry in recurringEntries {
             // Cancel notification
             NotificationManager.shared.cancelNotification(for: recurringEntry)
-
-            // Mark as deleted to prevent sync from restoring it
-            DeletionTracker.shared.markCustomEntryDeleted(recurringEntry.id)
-
-            // Delete from cloud in background
-            let entryId = recurringEntry.id
-            Task {
-                try? await EntrySyncService.shared.deleteCustomEntryFromCloud(entryId: entryId)
-            }
-
+            entryIds.append(recurringEntry.id)
             // Delete locally
             modelContext.delete(recurringEntry)
+        }
+
+        // Mark as deleted and sync to cloud in background
+        Task {
+            for entryId in entryIds {
+                await DeletionTracker.shared.markCustomEntryDeleted(entryId)
+                try? await EntrySyncService.shared.deleteCustomEntryFromCloud(entryId: entryId)
+                await DeletionTracker.shared.clearCustomEntryDeletion(entryId)
+            }
         }
 
         dismiss()

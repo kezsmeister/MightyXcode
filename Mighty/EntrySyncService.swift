@@ -5,7 +5,8 @@ import os.log
 private let entrySyncLogger = Logger(subsystem: "com.mighty.app", category: "EntrySync")
 
 /// Tracks recently deleted entries to prevent them from being restored during sync
-final class DeletionTracker {
+/// Thread-safe actor with persistence to survive app restarts
+actor DeletionTracker {
     static let shared = DeletionTracker()
 
     private var deletedCustomEntryIds = Set<UUID>()
@@ -13,23 +14,42 @@ final class DeletionTracker {
     private var deletedSectionIds = Set<UUID>()
     private var deletedProfileIds = Set<UUID>()
 
-    private init() {}
+    // UserDefaults keys for persistence
+    private enum Keys {
+        static let customEntries = "DeletionTracker.customEntries"
+        static let mediaEntries = "DeletionTracker.mediaEntries"
+        static let sections = "DeletionTracker.sections"
+        static let profiles = "DeletionTracker.profiles"
+    }
+
+    private init() {
+        // Load persisted data on initialization
+        loadPersistedData()
+    }
+
+    // MARK: - Mark as Deleted
 
     func markCustomEntryDeleted(_ id: UUID) {
         deletedCustomEntryIds.insert(id)
+        persistSet(deletedCustomEntryIds, forKey: Keys.customEntries)
     }
 
     func markMediaEntryDeleted(_ id: UUID) {
         deletedMediaEntryIds.insert(id)
+        persistSet(deletedMediaEntryIds, forKey: Keys.mediaEntries)
     }
 
     func markSectionDeleted(_ id: UUID) {
         deletedSectionIds.insert(id)
+        persistSet(deletedSectionIds, forKey: Keys.sections)
     }
 
     func markProfileDeleted(_ id: UUID) {
         deletedProfileIds.insert(id)
+        persistSet(deletedProfileIds, forKey: Keys.profiles)
     }
+
+    // MARK: - Check if Deleted
 
     func isCustomEntryDeleted(_ id: UUID) -> Bool {
         deletedCustomEntryIds.contains(id)
@@ -45,6 +65,59 @@ final class DeletionTracker {
 
     func isProfileDeleted(_ id: UUID) -> Bool {
         deletedProfileIds.contains(id)
+    }
+
+    // MARK: - Clear After Successful Cloud Deletion
+
+    func clearCustomEntryDeletion(_ id: UUID) {
+        deletedCustomEntryIds.remove(id)
+        persistSet(deletedCustomEntryIds, forKey: Keys.customEntries)
+    }
+
+    func clearMediaEntryDeletion(_ id: UUID) {
+        deletedMediaEntryIds.remove(id)
+        persistSet(deletedMediaEntryIds, forKey: Keys.mediaEntries)
+    }
+
+    func clearSectionDeletion(_ id: UUID) {
+        deletedSectionIds.remove(id)
+        persistSet(deletedSectionIds, forKey: Keys.sections)
+    }
+
+    func clearProfileDeletion(_ id: UUID) {
+        deletedProfileIds.remove(id)
+        persistSet(deletedProfileIds, forKey: Keys.profiles)
+    }
+
+    // MARK: - Persistence Helpers
+
+    private func persistSet(_ set: Set<UUID>, forKey key: String) {
+        let stringArray = set.map { $0.uuidString }
+        UserDefaults.standard.set(stringArray, forKey: key)
+    }
+
+    private nonisolated func loadPersistedData() {
+        // Load from UserDefaults - this is called during init before actor is fully initialized
+        // We use nonisolated and then update via Task to be safe
+        Task {
+            await self.loadFromDefaults()
+        }
+    }
+
+    private func loadFromDefaults() {
+        if let strings = UserDefaults.standard.stringArray(forKey: Keys.customEntries) {
+            deletedCustomEntryIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        }
+        if let strings = UserDefaults.standard.stringArray(forKey: Keys.mediaEntries) {
+            deletedMediaEntryIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        }
+        if let strings = UserDefaults.standard.stringArray(forKey: Keys.sections) {
+            deletedSectionIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        }
+        if let strings = UserDefaults.standard.stringArray(forKey: Keys.profiles) {
+            deletedProfileIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        }
+        entrySyncLogger.info("Loaded deletion tracker: \(self.deletedCustomEntryIds.count) entries, \(self.deletedSectionIds.count) sections, \(self.deletedProfileIds.count) profiles")
     }
 }
 
@@ -72,7 +145,7 @@ actor EntrySyncService {
                 "sortOrder": section.sortOrder,
                 "suggestedActivities": section.suggestedActivities,
                 "notificationsEnabled": section.notificationsEnabled,
-                "updatedAt": ISO8601DateFormatter().string(from: section.updatedAt)
+                "updatedAt": DateFormatters.iso8601String(from: section.updatedAt)
             ]
 
             let updateStep = InstantDBService.shared.updateStep(
@@ -112,15 +185,15 @@ actor EntrySyncService {
                 "localId": entry.id.uuidString,
                 "title": entry.title,
                 "mediaTypeRaw": entry.mediaTypeRaw,
-                "date": ISO8601DateFormatter().string(from: entry.date),
-                "updatedAt": ISO8601DateFormatter().string(from: entry.updatedAt)
+                "date": DateFormatters.iso8601String(from: entry.date),
+                "updatedAt": DateFormatters.iso8601String(from: entry.updatedAt)
             ]
 
             if let videoTypeRaw = entry.videoTypeRaw {
                 entryData["videoTypeRaw"] = videoTypeRaw
             }
             if let endDate = entry.endDate {
-                entryData["endDate"] = ISO8601DateFormatter().string(from: endDate)
+                entryData["endDate"] = DateFormatters.iso8601String(from: endDate)
             }
             if let imageURL = entry.imageURL {
                 entryData["imageURL"] = imageURL
@@ -170,21 +243,21 @@ actor EntrySyncService {
             var entryData: [String: Any] = [
                 "localId": entry.id.uuidString,
                 "title": entry.title,
-                "date": ISO8601DateFormatter().string(from: entry.date),
+                "date": DateFormatters.iso8601String(from: entry.date),
                 "notifyBefore": entry.notifyBefore,
                 "isRecurrenceTemplate": entry.isRecurrenceTemplate,
-                "updatedAt": ISO8601DateFormatter().string(from: entry.updatedAt)
+                "updatedAt": DateFormatters.iso8601String(from: entry.updatedAt)
             ]
 
             // Optional fields
             if let endDate = entry.endDate {
-                entryData["endDate"] = ISO8601DateFormatter().string(from: endDate)
+                entryData["endDate"] = DateFormatters.iso8601String(from: endDate)
             }
             if let startTime = entry.startTime {
-                entryData["startTime"] = ISO8601DateFormatter().string(from: startTime)
+                entryData["startTime"] = DateFormatters.iso8601String(from: startTime)
             }
             if let endTime = entry.endTime {
-                entryData["endTime"] = ISO8601DateFormatter().string(from: endTime)
+                entryData["endTime"] = DateFormatters.iso8601String(from: endTime)
             }
             if let rating = entry.rating {
                 entryData["rating"] = rating
@@ -203,7 +276,7 @@ actor EntrySyncService {
                 entryData["recurrenceWeekdays"] = recurrenceWeekdays
             }
             if let recurrenceEndDate = entry.recurrenceEndDate {
-                entryData["recurrenceEndDate"] = ISO8601DateFormatter().string(from: recurrenceEndDate)
+                entryData["recurrenceEndDate"] = DateFormatters.iso8601String(from: recurrenceEndDate)
             }
             if let recurrenceOccurrenceCount = entry.recurrenceOccurrenceCount {
                 entryData["recurrenceOccurrenceCount"] = recurrenceOccurrenceCount
@@ -316,7 +389,7 @@ actor EntrySyncService {
     // MARK: - Merge Cloud → Local
 
     @MainActor
-    func mergeSections(_ cloudSections: [CloudCustomSection], into context: ModelContext, user: User) throws {
+    func mergeSections(_ cloudSections: [CloudCustomSection], into context: ModelContext, user: User) async throws {
         let localSections = user.customSections
 
         // Track sections we've already processed to prevent duplicates within this sync
@@ -329,14 +402,14 @@ actor EntrySyncService {
         for cloudSection in cloudSections {
             // Skip sections that were recently deleted locally
             if let sectionUUID = UUID(uuidString: cloudSection.localId),
-               DeletionTracker.shared.isSectionDeleted(sectionUUID) {
+               await DeletionTracker.shared.isSectionDeleted(sectionUUID) {
                 entrySyncLogger.info("Skipping deleted section: \(cloudSection.localId)")
                 continue
             }
 
             if let existingSection = localSections.first(where: { $0.id.uuidString == cloudSection.localId }) {
                 // Update if cloud is newer
-                if let cloudDate = ISO8601DateFormatter().date(from: cloudSection.updatedAt),
+                if let cloudDate = DateFormatters.date(fromISO8601: cloudSection.updatedAt),
                    cloudDate > existingSection.updatedAt {
                     existingSection.name = cloudSection.name
                     existingSection.icon = cloudSection.icon
@@ -368,7 +441,7 @@ actor EntrySyncService {
                     notificationsEnabled: cloudSection.notificationsEnabled,
                     user: user
                 )
-                if let cloudDate = ISO8601DateFormatter().date(from: cloudSection.updatedAt) {
+                if let cloudDate = DateFormatters.date(fromISO8601: cloudSection.updatedAt) {
                     newSection.updatedAt = cloudDate
                 }
                 context.insert(newSection)
@@ -379,7 +452,7 @@ actor EntrySyncService {
     }
 
     @MainActor
-    func mergeMediaEntries(_ cloudEntries: [CloudMediaEntry], into context: ModelContext, user: User) throws {
+    func mergeMediaEntries(_ cloudEntries: [CloudMediaEntry], into context: ModelContext, user: User) async throws {
         let localEntries = user.entries
 
         // Track entries we've already processed to prevent duplicates within this sync
@@ -396,18 +469,18 @@ actor EntrySyncService {
         for cloudEntry in cloudEntries {
             // Skip entries that were recently deleted locally
             if let entryUUID = UUID(uuidString: cloudEntry.localId),
-               DeletionTracker.shared.isMediaEntryDeleted(entryUUID) {
+               await DeletionTracker.shared.isMediaEntryDeleted(entryUUID) {
                 entrySyncLogger.info("Skipping deleted media entry: \(cloudEntry.localId)")
                 continue
             }
 
             // Parse cloud entry date for comparison
-            let cloudDate = cloudEntry.date.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let cloudDate = cloudEntry.date.flatMap { DateFormatters.date(fromISO8601: $0) }
 
             // First try to match by ID
             if let existingEntry = localEntries.first(where: { $0.id.uuidString == cloudEntry.localId }) {
                 // Update if cloud is newer
-                if let cloudUpdatedAt = ISO8601DateFormatter().date(from: cloudEntry.updatedAt),
+                if let cloudUpdatedAt = DateFormatters.date(fromISO8601: cloudEntry.updatedAt),
                    cloudUpdatedAt > existingEntry.updatedAt {
                     existingEntry.title = cloudEntry.title
                     existingEntry.mediaTypeRaw = cloudEntry.mediaTypeRaw
@@ -416,7 +489,7 @@ actor EntrySyncService {
                         existingEntry.date = date
                     }
                     if let endDateStr = cloudEntry.endDate {
-                        existingEntry.endDate = ISO8601DateFormatter().date(from: endDateStr)
+                        existingEntry.endDate = DateFormatters.date(fromISO8601: endDateStr)
                     }
                     existingEntry.imageURL = cloudEntry.imageURL
                     existingEntry.rating = cloudEntry.rating
@@ -441,7 +514,7 @@ actor EntrySyncService {
                 let mediaType = MediaType(rawValue: cloudEntry.mediaTypeRaw) ?? .movies
                 let videoType = cloudEntry.videoTypeRaw.flatMap { VideoType(rawValue: $0) }
                 let date = cloudDate ?? Date()
-                let endDate = cloudEntry.endDate.flatMap { ISO8601DateFormatter().date(from: $0) }
+                let endDate = cloudEntry.endDate.flatMap { DateFormatters.date(fromISO8601: $0) }
 
                 let newEntry = MediaEntry(
                     id: UUID(uuidString: cloudEntry.localId) ?? UUID(),
@@ -455,7 +528,7 @@ actor EntrySyncService {
                     notes: cloudEntry.notes,
                     user: user
                 )
-                if let cloudUpdatedAt = ISO8601DateFormatter().date(from: cloudEntry.updatedAt) {
+                if let cloudUpdatedAt = DateFormatters.date(fromISO8601: cloudEntry.updatedAt) {
                     newEntry.updatedAt = cloudUpdatedAt
                 }
                 context.insert(newEntry)
@@ -466,7 +539,7 @@ actor EntrySyncService {
     }
 
     @MainActor
-    func mergeCustomEntries(_ cloudEntries: [CloudCustomEntry], into context: ModelContext, section: CustomSection) throws {
+    func mergeCustomEntries(_ cloudEntries: [CloudCustomEntry], into context: ModelContext, section: CustomSection) async throws {
         // Query ALL local custom entries to build the processed keys set
         // This ensures we don't create duplicates even if section.entries isn't fully loaded
         let fetchDescriptor = FetchDescriptor<CustomEntry>()
@@ -494,32 +567,32 @@ actor EntrySyncService {
         for cloudEntry in cloudEntries {
             // Skip entries that were recently deleted locally
             if let entryUUID = UUID(uuidString: cloudEntry.localId),
-               DeletionTracker.shared.isCustomEntryDeleted(entryUUID) {
+               await DeletionTracker.shared.isCustomEntryDeleted(entryUUID) {
                 entrySyncLogger.info("Skipping deleted custom entry: \(cloudEntry.localId)")
                 continue
             }
 
             // Parse cloud entry dates for comparison
-            let cloudDate = cloudEntry.date.flatMap { ISO8601DateFormatter().date(from: $0) }
-            let cloudStartTime = cloudEntry.startTime.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let cloudDate = cloudEntry.date.flatMap { DateFormatters.date(fromISO8601: $0) }
+            let cloudStartTime = cloudEntry.startTime.flatMap { DateFormatters.date(fromISO8601: $0) }
 
             // First try to match by ID (check all local entries, not just this section)
             if let existingEntry = allLocalEntries.first(where: { $0.id.uuidString == cloudEntry.localId }) {
                 // Update if cloud is newer
-                if let cloudDate = ISO8601DateFormatter().date(from: cloudEntry.updatedAt),
+                if let cloudDate = DateFormatters.date(fromISO8601: cloudEntry.updatedAt),
                    cloudDate > existingEntry.updatedAt {
                     existingEntry.title = cloudEntry.title
                     if let dateStr = cloudEntry.date {
-                        existingEntry.date = ISO8601DateFormatter().date(from: dateStr) ?? existingEntry.date
+                        existingEntry.date = DateFormatters.date(fromISO8601: dateStr) ?? existingEntry.date
                     }
                     if let endDateStr = cloudEntry.endDate {
-                        existingEntry.endDate = ISO8601DateFormatter().date(from: endDateStr)
+                        existingEntry.endDate = DateFormatters.date(fromISO8601: endDateStr)
                     }
                     if let startTimeStr = cloudEntry.startTime {
-                        existingEntry.startTime = ISO8601DateFormatter().date(from: startTimeStr)
+                        existingEntry.startTime = DateFormatters.date(fromISO8601: startTimeStr)
                     }
                     if let endTimeStr = cloudEntry.endTime {
-                        existingEntry.endTime = ISO8601DateFormatter().date(from: endTimeStr)
+                        existingEntry.endTime = DateFormatters.date(fromISO8601: endTimeStr)
                     }
                     existingEntry.notifyBefore = cloudEntry.notifyBefore
                     existingEntry.rating = cloudEntry.rating
@@ -531,7 +604,7 @@ actor EntrySyncService {
                     existingEntry.recurrencePatternRaw = cloudEntry.recurrencePatternRaw
                     existingEntry.recurrenceWeekdays = cloudEntry.recurrenceWeekdays
                     if let endDateStr = cloudEntry.recurrenceEndDate {
-                        existingEntry.recurrenceEndDate = ISO8601DateFormatter().date(from: endDateStr)
+                        existingEntry.recurrenceEndDate = DateFormatters.date(fromISO8601: endDateStr)
                     }
                     existingEntry.recurrenceOccurrenceCount = cloudEntry.recurrenceOccurrenceCount
                     existingEntry.isRecurrenceTemplate = cloudEntry.isRecurrenceTemplate
@@ -555,12 +628,12 @@ actor EntrySyncService {
 
                 // Create new entry from cloud
                 let date = cloudDate ?? Date()
-                let endDate = cloudEntry.endDate.flatMap { ISO8601DateFormatter().date(from: $0) }
+                let endDate = cloudEntry.endDate.flatMap { DateFormatters.date(fromISO8601: $0) }
                 let startTime = cloudStartTime
-                let endTime = cloudEntry.endTime.flatMap { ISO8601DateFormatter().date(from: $0) }
+                let endTime = cloudEntry.endTime.flatMap { DateFormatters.date(fromISO8601: $0) }
                 let recurrenceGroupId = cloudEntry.recurrenceGroupId.flatMap { UUID(uuidString: $0) }
                 let recurrencePattern = cloudEntry.recurrencePatternRaw.flatMap { RecurrencePattern(rawValue: $0) }
-                let recurrenceEndDate = cloudEntry.recurrenceEndDate.flatMap { ISO8601DateFormatter().date(from: $0) }
+                let recurrenceEndDate = cloudEntry.recurrenceEndDate.flatMap { DateFormatters.date(fromISO8601: $0) }
 
                 let newEntry = CustomEntry(
                     id: UUID(uuidString: cloudEntry.localId) ?? UUID(),
@@ -581,7 +654,7 @@ actor EntrySyncService {
                     recurrenceOccurrenceCount: cloudEntry.recurrenceOccurrenceCount,
                     isRecurrenceTemplate: cloudEntry.isRecurrenceTemplate
                 )
-                if let cloudUpdatedAt = ISO8601DateFormatter().date(from: cloudEntry.updatedAt) {
+                if let cloudUpdatedAt = DateFormatters.date(fromISO8601: cloudEntry.updatedAt) {
                     newEntry.updatedAt = cloudUpdatedAt
                 }
                 context.insert(newEntry)
@@ -603,19 +676,19 @@ actor EntrySyncService {
         // Fetch cloud sections
         let cloudSections = try await fetchSectionsFromCloud(userId: user.id)
         // Merge cloud → local
-        try mergeSections(cloudSections, into: context, user: user)
+        try await mergeSections(cloudSections, into: context, user: user)
         // Upload local → cloud
         try await syncSectionsToCloud(sections: user.customSections, userId: user.id)
 
         // 2. Sync media entries
         let cloudMediaEntries = try await fetchMediaEntriesFromCloud(userId: user.id)
-        try mergeMediaEntries(cloudMediaEntries, into: context, user: user)
+        try await mergeMediaEntries(cloudMediaEntries, into: context, user: user)
         try await syncMediaEntriesToCloud(entries: user.entries, userId: user.id)
 
         // 3. Sync custom entries for each section
         for section in user.customSections {
             let cloudCustomEntries = try await fetchCustomEntriesFromCloud(sectionId: section.id)
-            try mergeCustomEntries(cloudCustomEntries, into: context, section: section)
+            try await mergeCustomEntries(cloudCustomEntries, into: context, section: section)
             try await syncCustomEntriesToCloud(entries: section.entries)
         }
 
@@ -674,8 +747,8 @@ actor EntrySyncService {
         var groupedEntries: [String: [CloudCustomEntryWithSection]] = [:]
 
         for entry in cloudEntries {
-            let cloudDate = entry.date.flatMap { ISO8601DateFormatter().date(from: $0) }
-            let cloudStartTime = entry.startTime.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let cloudDate = entry.date.flatMap { DateFormatters.date(fromISO8601: $0) }
+            let cloudStartTime = entry.startTime.flatMap { DateFormatters.date(fromISO8601: $0) }
 
             let cloudHour = cloudStartTime.map { calendar.component(.hour, from: $0) } ?? -1
             let cloudMinute = cloudStartTime.map { calendar.component(.minute, from: $0) } ?? -1

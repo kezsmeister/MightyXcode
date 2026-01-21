@@ -16,7 +16,7 @@ export default {
   async fetch(request, env, ctx) {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return handleCORS();
+      return handleCORS(request);
     }
 
     const url = new URL(request.url);
@@ -171,33 +171,54 @@ async function verifyRefreshToken(refreshToken, env) {
 /**
  * Helper: Create JSON response with CORS headers
  */
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, request = null) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(),
+      ...corsHeaders(request),
     },
   });
 }
 
 /**
  * Helper: CORS headers
+ * Restricted to specific origins for security
+ * iOS native apps don't require CORS, but this protects against web-based attacks
  */
-function corsHeaders() {
+function corsHeaders(request) {
+  const origin = request?.headers?.get('Origin') || '';
+
+  // Allow specific origins only
+  // Add your web domains here if you have a web app
+  const allowedOrigins = [
+    'https://mighty-app.com',
+    'https://www.mighty-app.com',
+    // Allow localhost for development
+    'http://localhost:3000',
+    'http://localhost:8080',
+  ];
+
+  // For iOS native requests, Origin header is typically not sent
+  // We allow requests without Origin (native apps) but restrict web origins
+  const allowOrigin = origin === '' || allowedOrigins.includes(origin)
+    ? (origin || 'https://mighty-app.com')
+    : 'https://mighty-app.com';
+
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400', // Cache preflight for 24 hours
   };
 }
 
 /**
  * Helper: Handle CORS preflight
  */
-function handleCORS() {
+function handleCORS(request) {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(request),
   });
 }

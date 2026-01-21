@@ -406,7 +406,7 @@ struct FamilyInvitation: Codable, Identifiable {
     }
 
     var isExpired: Bool {
-        guard let date = ISO8601DateFormatter().date(from: expiresAt) else { return false }
+        guard let date = DateFormatters.date(fromISO8601: expiresAt) else { return false }
         return date < Date()
     }
 

@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import os.log
+
+private let settingsLogger = Logger(subsystem: "com.mighty.app", category: "Settings")
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -284,7 +287,7 @@ struct SettingsView: View {
                 await MainActor.run {
                     isSigningOut = false
                     signOutError = "Sign out failed: \(error.localizedDescription)"
-                    print("[Auth] Sign out error: \(error)")
+                    settingsLogger.error("Sign out error: \(error.localizedDescription)")
                 }
             }
         }
